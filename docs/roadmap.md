@@ -28,10 +28,10 @@
 - **holochain-open-dev** — Community-standard patterns: Profiles zome, linked devices, file storage, notifications
 - **ADAM (coasys)** — AD4M perspectives, expression languages, cross-hApp linking
 - **Holo Hosting** — HTTP gateway setup, edge node configuration, Holo Node ISO, HolOS
+- **Unyt** — Holochain Foundation's P2P accounting and payment infrastructure; Alliance setup and configuration, Smart Agreements (RHAI scripting, three-layer template/agreement/RAVE architecture), transaction types (Pay, Request, Trade), inter-network and EVM bridging, agent onboarding via Joining Service REST API, Pricing Oracle integration, and deployment with `tauri-plugin-holochain`
 
 ### New context files
 - `WindTunnel.md` — Performance testing with Wind Tunnel
-- `unyt.md` — Unit-aware numeric types for resource tracking apps
 
 ### Architecture improvements
 - Skill graph: parent orchestrator routing to sub-skills
