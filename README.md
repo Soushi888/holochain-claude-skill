@@ -1,6 +1,6 @@
 # Holochain Claude Skill
 
-A comprehensive Claude Code skill for Holochain hApp development. Covers the full development spiral from architecture and design through scaffolding, implementation, testing, and deployment.
+A comprehensive [Agent Skills Open Standard](https://agentskills.io) skill for Holochain hApp development, compatible with Claude Code, GitHub Copilot, Cursor, Augment, and any other tool supporting the standard. Covers the full development spiral from architecture and design through scaffolding, implementation, testing, and deployment.
 
 ## What It Covers
 
@@ -17,32 +17,63 @@ A comprehensive Claude Code skill for Holochain hApp development. Covers the ful
 
 ## Installation
 
-### Option A: Global (all projects)
+This skill conforms to the [Agent Skills Open Standard](https://agentskills.io). The universal install path `.claude/skills/holochain/` is recognized by all compatible tools.
+
+### Compatible Tools
+
+| Tool | Supported | Invocation |
+|------|-----------|------------|
+| [Claude Code](https://claude.ai/code) | ✅ | `/holochain` |
+| [GitHub Copilot](https://github.com/features/copilot) | ✅ | via agent skills |
+| [Cursor](https://cursor.com) | ✅ | via agent skills |
+| [Augment Code](https://augmentcode.com) | ✅ | via agent skills |
+| [OpenAI Codex CLI](https://openai.com/codex) | ✅ | via agent skills |
+
+---
+
+### Claude Code
+
+**Option A: Global** — available in all projects
 
 ```bash
-# Copy the skill folder to your global Claude Code skills directory
 cp -r holochain-claude-skill ~/.claude/skills/holochain
 ```
 
-### Option B: Project-local
+**Option B: Project-local** — scoped to one project
 
 ```bash
-# Copy into your project's .claude directory
 mkdir -p your-project/.claude/skills
 cp -r holochain-claude-skill your-project/.claude/skills/holochain
 ```
 
-### Option C: Symlink (recommended for development)
+**Option C: Symlink** (recommended — auto-updates with `git pull`)
 
 ```bash
-# Clone and symlink for easy updates
 git clone https://github.com/Soushi888/holochain-claude-skill ~/holochain-claude-skill
 ln -s ~/holochain-claude-skill ~/.claude/skills/holochain
 ```
 
-Once installed, Claude Code will load `SKILL.md` when you use the `/holochain` command or when Claude detects Holochain-related work.
+Once installed, invoke with `/holochain` or let Claude detect Holochain-related work automatically.
 
-> **Upgrading from v0.1.0?** The install directory name changed from `Holochain` to `holochain` (lowercase) to conform to the Agent Skills Open Standard. Rename your existing install: `mv ~/.claude/skills/Holochain ~/.claude/skills/holochain`
+---
+
+### Cursor, GitHub Copilot, Augment, and others
+
+Install to your **project root's** `.claude/skills/` directory — all Agent Skills-compatible tools search this path:
+
+```bash
+mkdir -p .claude/skills
+cp -r holochain-claude-skill .claude/skills/holochain
+```
+
+The tool discovers the skill automatically on next launch. For global install paths specific to each tool, refer to the tool's own documentation.
+
+---
+
+> **Upgrading from an older install?** If you previously installed to `.claude/skills/Holochain/` (uppercase), rename the directory:
+> ```bash
+> mv ~/.claude/skills/Holochain ~/.claude/skills/holochain
+> ```
 
 ## Quick Start
 
