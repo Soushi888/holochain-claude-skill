@@ -13,7 +13,7 @@
 - `DesignAccessControl` — Capability grants and admin patterns
 - `PackageAndDeploy` — Kangaroo-Electron packaging and CI/CD
 
-**Target:** Claude Code only
+**Target:** All Agent Skills-compatible tools (Claude Code, GitHub Copilot, Cursor, Augment, Codex)
 
 ---
 

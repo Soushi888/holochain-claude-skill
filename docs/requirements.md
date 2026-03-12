@@ -1,4 +1,4 @@
-# Requirements Specification: Holochain Claude Skill
+# Requirements Specification: Holochain Agent Skill
 
 **Discovery session:** 2026-03-12
 **Status:** v1 scope confirmed
@@ -9,7 +9,7 @@
 
 The Holochain developer ecosystem lacks a comprehensive AI coding assistant skill that covers the full development cycle in one place. Existing documentation is scattered across developer.holochain.org, GitHub repos, and community channels. New developers face steep learning curves; experienced developers lack a fast co-pilot for implementation patterns. This skill addresses both by providing a structured, context-aware assistant that works across the full spiral: architecture, design, scaffolding, implementation, testing, and deployment.
 
-A secondary goal is enabling the wider Holochain community to benefit from AI-assisted development without requiring PAI (Personal AI Infrastructure) — the skill must work as a standalone Claude Code skill with zero external dependencies.
+A secondary goal is enabling the wider Holochain community to benefit from AI-assisted development without requiring PAI (Personal AI Infrastructure) — the skill must work as a standalone agent skill with zero external dependencies.
 
 ---
 
@@ -55,7 +55,7 @@ A secondary goal is enabling the wider Holochain community to benefit from AI-as
 
 ## Constraints
 
-- **v1 targets Claude Code only** — no cross-LLM compatibility required
+- **v1 conforms to Agent Skills Open Standard** — compatible with Claude Code, GitHub Copilot, Cursor, Augment, and Codex
 - **Ecosystem expansion deferred to v2** — hREA, unyt, holochain-open-dev, ADAM, Wind Tunnel not in scope
 - **Two independent codebases for v1** — PAI version and vanilla version developed separately; integration/merge post-v1
 - **No GUI in v1** — visual tooling, diagram generation, and no-code interfaces are v3+ vision

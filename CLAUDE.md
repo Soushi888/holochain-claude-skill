@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-A vanilla Claude Code skill for Holochain hApp development. It is a documentation-only repository — no Rust, no TypeScript, no build system. All files are Markdown. The skill is loaded by Claude Code when a user invokes `/holochain` or when Holochain-related work is detected.
+A vanilla agent skill for Holochain hApp development. It is a documentation-only repository — no Rust, no TypeScript, no build system. All files are Markdown. The skill is loaded by Claude Code when a user invokes `/holochain` or when Holochain-related work is detected.
 
 **PAI-independence constraint:** This skill must work with zero PAI infrastructure (`~/.claude/PAI/` not required). No voice notification curls, no Algorithm routing, no PROJECTS.md references. All content must be self-contained.
 
