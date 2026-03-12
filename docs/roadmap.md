@@ -70,3 +70,4 @@ Once both the PAI version and vanilla version are field-tested:
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1.0 | 2026-03-12 | Initial vanilla skill — 6 domains, 5 workflows, requirements spec |
+| 0.1.1 | 2026-03-12 | Agent Skills Open Standard conformance, multi-platform README, testing plan |
