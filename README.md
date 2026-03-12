@@ -21,7 +21,7 @@ A comprehensive Claude Code skill for Holochain hApp development. Covers the ful
 
 ```bash
 # Copy the skill folder to your global Claude Code skills directory
-cp -r holochain-claude-skill ~/.claude/skills/Holochain
+cp -r holochain-claude-skill ~/.claude/skills/holochain
 ```
 
 ### Option B: Project-local
@@ -29,7 +29,7 @@ cp -r holochain-claude-skill ~/.claude/skills/Holochain
 ```bash
 # Copy into your project's .claude directory
 mkdir -p your-project/.claude/skills
-cp -r holochain-claude-skill your-project/.claude/skills/Holochain
+cp -r holochain-claude-skill your-project/.claude/skills/holochain
 ```
 
 ### Option C: Symlink (recommended for development)
@@ -37,28 +37,30 @@ cp -r holochain-claude-skill your-project/.claude/skills/Holochain
 ```bash
 # Clone and symlink for easy updates
 git clone https://github.com/YOUR_ORG/holochain-claude-skill ~/holochain-claude-skill
-ln -s ~/holochain-claude-skill ~/.claude/skills/Holochain
+ln -s ~/holochain-claude-skill ~/.claude/skills/holochain
 ```
 
-Once installed, Claude Code will load `SKILL.md` when you use the `/Holochain` command or when Claude detects Holochain-related work.
+Once installed, Claude Code will load `SKILL.md` when you use the `/holochain` command or when Claude detects Holochain-related work.
+
+> **Upgrading from v0.1.0?** The install directory name changed from `Holochain` to `holochain` (lowercase) to conform to the Agent Skills Open Standard. Rename your existing install: `mv ~/.claude/skills/Holochain ~/.claude/skills/holochain`
 
 ## Quick Start
 
 ```
 # Design a new data model
-/Holochain design data model for a marketplace listing with status transitions
+/holochain design data model for a marketplace listing with status transitions
 
 # Scaffold a new hApp from scratch
-/Holochain scaffold new happ called my-network
+/holochain scaffold new happ called my-network
 
 # Implement a full CRUD zome
-/Holochain implement zome for Profile entry type
+/holochain implement zome for Profile entry type
 
 # Debug a flaky test
-/Holochain my Tryorama test passes alone but fails when Bob reads Alice's entry
+/holochain my Tryorama test passes alone but fails when Bob reads Alice's entry
 
 # Package for distribution
-/Holochain deploy package my happ for desktop distribution
+/holochain deploy package my happ for desktop distribution
 ```
 
 ## Workflow Triggers
@@ -114,4 +116,4 @@ When updating for new Holochain versions, update the version pins in `SKILL.md` 
 
 ## License
 
-MIT
+Apache-2.0

@@ -1,2 +1,10 @@
 .DS_Store
 *.swp
+
+# PAI
+Plans/
+MEMORY/
+
+# Local aliases
+*.local.*
+*.local

@@ -1,6 +1,22 @@
 ---
-name: Holochain
-description: Holochain hApp development assistant covering coordinator/integrity zome architecture, Rust HDK/HDI patterns, entry/link types, CRUD, validation, cross-zome calls, Tryorama testing, TypeScript client integration, Nix dev environments, and deployment. USE WHEN writing zome code, designing DHT data models, scaffolding a new project, testing hApps, debugging HDK issues, implementing entry types or links, cap grants, access control, cell cloning, deploying or packaging hApps, or working on any Holochain project.
+name: holochain
+description: >
+  Holochain hApp development assistant covering coordinator/integrity zome
+  architecture, Rust HDK/HDI patterns, entry/link types, CRUD, validation,
+  cross-zome calls, Tryorama testing, TypeScript client integration, and
+  Nix dev environments. USE WHEN writing zome code, designing DHT data models,
+  scaffolding a new project, testing hApps, debugging HDK issues, implementing
+  entry types or links, cap grants, access control, cell cloning, deploying
+  or packaging hApps, or working on any Holochain project.
+license: Apache-2.0
+compatibility: >
+  Requires Nix dev environment (holonix ref=main-0.6). Rust toolchain managed
+  by Nix — no separate rustup install needed. Network access required for
+  hc scaffold and nix flake updates.
+metadata:
+  author: soushi888
+  version: "0.1.0"
+  holochain-versions: "hdk=0.6.0, hdi=0.7.0, holonix ref=main-0.6"
 ---
 
 # Holochain Development Skill
