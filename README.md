@@ -36,7 +36,7 @@ cp -r holochain-claude-skill your-project/.claude/skills/holochain
 
 ```bash
 # Clone and symlink for easy updates
-git clone https://github.com/YOUR_ORG/holochain-claude-skill ~/holochain-claude-skill
+git clone https://github.com/Soushi888/holochain-claude-skill ~/holochain-claude-skill
 ln -s ~/holochain-claude-skill ~/.claude/skills/holochain
 ```
 
