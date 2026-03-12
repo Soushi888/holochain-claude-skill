@@ -1,28 +1,52 @@
 # Holochain Testing
 
+## Three-Layer Testing Strategy
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Layer 3 — E2E UI (Playwright + real conductor)     │
+│  "Does the UI render real data and journeys work?"  │
+├─────────────────────────────────────────────────────┤
+│  Layer 2 — Integration (Sweettest, cargo test)      │
+│  "Do zomes, DHT sync, and validation work?"         │
+├─────────────────────────────────────────────────────┤
+│  Layer 1 — Unit (Vitest, stores/services/mappers)   │
+│  "Do computed values and business logic work?"      │
+└─────────────────────────────────────────────────────┘
+```
+
+| Layer | Tool | What it catches | What it misses |
+|-------|------|----------------|---------------|
+| Unit | Vitest | Store logic, mappers, computed values | Anything touching real Holochain |
+| Integration | Sweettest | Zome logic, validation, DHT sync, auth | UI rendering, routing |
+| E2E UI | Playwright + `@holochain/client` | Full user journeys, real data display | Isolated zome edge cases |
+
+**Gap:** Browser-side signal handling (`recv_remote_signal`) is not well covered by any layer — it requires a running UI receiving WebSocket push events from a real conductor.
+
+---
+
 ## Framework Overview
 
-Two complementary testing frameworks:
-
 - **Sweettest** (`holochain::sweettest`) — Rust-native, in-process conductor. Official Holochain team recommendation. Run with `cargo test`.
-- **Tryorama** (`@holochain/tryorama`) + **Vitest** — TypeScript, WebSocket-based. Tests the UI client perspective. Scaffolded by default with `hc scaffold`.
+- **Tryorama** (`@holochain/tryorama`) + **Vitest** — TypeScript, WebSocket-based. Scaffolded by default with `hc scaffold`. Deprecated for 0.7+ by the Holochain team.
+- **Playwright** + **`@holochain/client`** — Browser automation against a real conductor. No mocks.
 
-**Strategic note:** The Holochain team has deprecated Tryorama for 0.7+ and recommends sweettest for new projects. Tryorama continues to work on 0.6.x and remains useful for testing the frontend WebSocket interface.
+**Note on Tryorama for e2e:** Tryorama wraps `@holochain/client` under the hood and is designed to clean up the conductor after each scenario — the opposite of what e2e UI tests need. Use `@holochain/client` directly for e2e conductor setup.
 
 ---
 
 ## When to Use Which
 
-| Use Case | Sweettest | Tryorama |
-|----------|-----------|---------|
-| Zome logic, validation, CRUD | ✅ Preferred | Works |
-| DHT propagation, consistency | ✅ Preferred | Works |
-| Multi-agent scenarios | ✅ Preferred | Works |
-| Inline zomes (no WASM compile) | ✅ Yes | No |
-| Direct DHT database inspection | ✅ Yes | No |
-| Frontend WebSocket API testing | No | ✅ Yes |
-| Signal handling from client side | No | ✅ Yes |
-| Language | Rust | TypeScript |
+| Use Case | Sweettest | Tryorama | Playwright |
+|----------|-----------|---------|-----------|
+| Zome logic, validation, CRUD | ✅ Preferred | Works | No |
+| DHT propagation, consistency | ✅ Preferred | Works | No |
+| Multi-agent scenarios | ✅ Preferred | Works | No |
+| Inline zomes (no WASM compile) | ✅ Yes | No | No |
+| Direct DHT database inspection | ✅ Yes | No | No |
+| Full UI user journeys | No | No | ✅ Yes |
+| Real data rendered in browser | No | No | ✅ Yes |
+| Language | Rust | TypeScript | TypeScript |
 
 ---
 
@@ -409,3 +433,151 @@ vitest run tests/my_entry.test.ts  # Single file
 | Test times out at 30s | Default timeout too short | Set `testTimeout: 60000` in vitest config |
 | `namedCells.get()` returns undefined | Wrong role name | Check `roles[].name` in `happ.yaml` |
 | Validation error on create | Entry struct mismatch | Check serde field names match Rust struct |
+
+---
+
+## E2E UI Testing (Playwright + Real Conductor)
+
+For full end-to-end tests that drive the UI against a real Holochain backend — no mocks.
+
+**Do not use Tryorama for this.** Tryorama tears down the conductor after each scenario, which is the opposite of what Playwright needs (conductor must stay alive while the browser runs). Use `@holochain/client` directly.
+
+### Setup (package.json)
+
+```json
+{
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@holochain/client": "^0.18.0"
+  }
+}
+```
+
+### Conductor Setup Pattern (globalSetup)
+
+The critical pattern: use `AdminWebsocket` to install the app and get a proper auth token, then keep the conductor alive for all Playwright tests.
+
+```typescript
+// tests/e2e/setup/global-setup.ts
+import { AdminWebsocket, AppWebsocket } from '@holochain/client';
+import { execSync, spawn } from 'child_process';
+
+export default async function globalSetup() {
+  // 1. Start conductor via hc sandbox
+  const conductor = spawn('hc', ['sandbox', 'run', '--root', './test-workdir'], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  // 2. Wait for conductor ready signal in stdout (not polling)
+  await new Promise<void>((resolve, reject) => {
+    conductor.stdout?.on('data', (data: Buffer) => {
+      if (data.toString().includes('Conductor ready')) resolve();
+    });
+    setTimeout(() => reject(new Error('Conductor startup timeout')), 30000);
+  });
+
+  // 3. Connect admin client (use admin port, not app port)
+  const admin = await AdminWebsocket.connect({
+    url: new URL('ws://localhost:8888')
+  });
+
+  // 4. Install and enable the happ properly
+  const agentKey = await admin.generateAgentPubKey();
+  await admin.installApp({
+    installed_app_id: 'my_happ',
+    agent_key: agentKey,
+    path: './workdir/my_happ.happ',
+  });
+  await admin.enableApp({ installed_app_id: 'my_happ' });
+
+  // 5. Open app interface on a free port
+  const { port } = await admin.attachAppInterface({ port: 0 });
+
+  // 6. Issue auth token
+  const { token } = await admin.issueAppAuthenticationToken({
+    installed_app_id: 'my_happ'
+  });
+
+  // 7. Connect app client and seed test data
+  const client = await AppWebsocket.connect({
+    url: new URL(`ws://localhost:${port}`),
+    token,
+  });
+
+  await seedTestData(client);
+
+  // 8. Store conductor process for teardown
+  process.env.E2E_CONDUCTOR_PID = String(conductor.pid);
+  process.env.E2E_APP_PORT = String(port);
+}
+```
+
+### Data Seeding
+
+Seed data directly via `AppWebsocket.callZome` before Playwright opens the browser:
+
+```typescript
+async function seedTestData(client: AppWebsocket) {
+  // Seed in dependency order
+  await client.callZome({
+    role_name: 'my_dna',
+    zome_name: 'my_coordinator',
+    fn_name: 'create_service_type',
+    payload: { name: 'Web Development', description: '...' },
+  });
+
+  await client.callZome({
+    role_name: 'my_dna',
+    zome_name: 'my_coordinator',
+    fn_name: 'create_offer',
+    payload: { title: 'Seed Offer', description: '...' },
+  });
+}
+```
+
+### Playwright Test Pattern
+
+```typescript
+// tests/e2e/specs/offers.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('user sees seeded offers on load', async ({ page }) => {
+  await page.goto('/offers');
+
+  // Wait for Holochain connection (not a mock — real loading time)
+  await expect(page.locator('[data-testid="offer-card"]'))
+    .toHaveCount(1, { timeout: 15000 });
+
+  await expect(page.locator('text=Seed Offer')).toBeVisible();
+});
+```
+
+### playwright.config.ts Key Settings
+
+```typescript
+export default defineConfig({
+  globalSetup: './tests/e2e/setup/global-setup.ts',
+  globalTeardown: './tests/e2e/setup/global-teardown.ts',
+  workers: 1,           // Single worker — one conductor, no conflicts
+  fullyParallel: false, // Holochain state is shared across tests
+  timeout: 60000,       // Holochain operations are slow
+  use: {
+    baseURL: 'http://localhost:5173',
+  },
+  webServer: {
+    command: 'bun run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: true,
+  },
+});
+```
+
+### Common E2E Failures
+
+| Symptom | Root Cause | Fix |
+|---------|-----------|-----|
+| Conductor never ready | Polling instead of stdout | Listen for `"Conductor ready"` in stdout |
+| `callZome` rejected | Using `AppWebsocket` on admin port | Use `AdminWebsocket` on admin port (8888), `AppWebsocket` on app port |
+| Auth error on connect | Missing token | Call `admin.issueAppAuthenticationToken()` and pass token to `AppWebsocket.connect` |
+| Tests interfere with each other | Shared conductor state | Run with `workers: 1`, reset data in `beforeEach` if needed |
+| UI shows no data | Race — browser loads before seeding | Seed in `globalSetup` (runs before browser opens), not in `beforeAll` |
