@@ -2,13 +2,193 @@
 
 ## Framework Overview
 
-- **Tryorama** (`@holochain/tryorama`) — Holochain test orchestration
-- **Vitest** — Test runner (ESM-native, works with Bun)
-- Tests run against real compiled `.happ` bundles, not mocks
+Two complementary testing frameworks:
+
+- **Sweettest** (`holochain::sweettest`) — Rust-native, in-process conductor. Official Holochain team recommendation. Run with `cargo test`.
+- **Tryorama** (`@holochain/tryorama`) + **Vitest** — TypeScript, WebSocket-based. Tests the UI client perspective. Scaffolded by default with `hc scaffold`.
+
+**Strategic note:** The Holochain team has deprecated Tryorama for 0.7+ and recommends sweettest for new projects. Tryorama continues to work on 0.6.x and remains useful for testing the frontend WebSocket interface.
 
 ---
 
-## Setup (package.json)
+## When to Use Which
+
+| Use Case | Sweettest | Tryorama |
+|----------|-----------|---------|
+| Zome logic, validation, CRUD | ✅ Preferred | Works |
+| DHT propagation, consistency | ✅ Preferred | Works |
+| Multi-agent scenarios | ✅ Preferred | Works |
+| Inline zomes (no WASM compile) | ✅ Yes | No |
+| Direct DHT database inspection | ✅ Yes | No |
+| Frontend WebSocket API testing | No | ✅ Yes |
+| Signal handling from client side | No | ✅ Yes |
+| Language | Rust | TypeScript |
+
+---
+
+## Sweettest (Rust-Native)
+
+### Setup (Cargo.toml)
+
+```toml
+[dev-dependencies]
+holochain = { version = "=0.6.0", features = ["test_utils"] }
+tokio = { version = "1", features = ["full"] }
+```
+
+### Core Types
+
+| Type | Purpose |
+|------|---------|
+| `SweetConductor` | Single conductor instance |
+| `SweetConductorBatch` | Multiple conductors for multi-agent scenarios |
+| `SweetApp` | Installed app with pre-built cells |
+| `SweetCell` | Cell reference — access agent key, DNA hash, zome handles |
+| `SweetZome` | `(CellId, ZomeName)` handle passed to `conductor.call()` |
+| `SweetAgents` | Agent key generation utilities |
+| `SweetDnaFile` | DNA construction helpers |
+| `SweetInlineZomes` | Define zome functions directly in test code |
+
+### Standard Two-Agent Test
+
+```rust
+use holochain::sweettest::*;
+use std::path::Path;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_agents_can_share_entries() {
+    // 1. Create two conductors
+    let mut conductors = SweetConductorBatch::from_config(
+        2,
+        SweetConductorConfig::standard(),
+    ).await;
+
+    // 2. Load DNA bundle
+    let dna = SweetDnaFile::from_bundle(Path::new("workdir/my.dna")).await.unwrap();
+
+    // 3. Install app on both conductors
+    let apps = conductors.setup_app("my-app", &[dna]).await.unwrap();
+    let ((alice_cell,), (bob_cell,)) = apps.into_tuples();
+
+    // 4. Exchange peer info so conductors can gossip
+    conductors.exchange_peer_info().await;
+
+    // 5. Alice creates an entry
+    let alice_zome = alice_cell.zome("my_coordinator");
+    let hash: ActionHash = conductors[0]
+        .call(&alice_zome, "create_my_entry", my_payload)
+        .await;
+
+    // 6. Wait for DHT consistency (replaces Tryorama's dhtSync)
+    await_consistency(&[&alice_cell, &bob_cell]).await.unwrap();
+
+    // 7. Bob reads the entry
+    let bob_zome = bob_cell.zome("my_coordinator");
+    let record: Option<Record> = conductors[1]
+        .call(&bob_zome, "get_my_entry", hash)
+        .await;
+
+    assert!(record.is_some());
+}
+```
+
+### CRITICAL: await_consistency is MANDATORY Before Cross-Agent Reads
+
+The Rust equivalent of Tryorama's `dhtSync`:
+
+```rust
+// After any write, before cross-agent reads:
+await_consistency(&[&alice_cell, &bob_cell]).await.unwrap();
+
+// Custom timeout in seconds (default is 60s):
+await_consistency_s(30, &[&alice_cell, &bob_cell]).await.unwrap();
+
+// Instant non-waiting check:
+check_consistency(&[&alice_cell, &bob_cell]).await.unwrap();
+```
+
+`await_consistency` polls every 500ms, comparing all peers' DHT databases at the op level until every op is integrated across all nodes.
+
+### Calling Zome Functions
+
+```rust
+// Standard call — panics on error, uses authorship cap automatically:
+let result: MyOutputType = conductor.call(&cell.zome("my_zome"), "fn_name", payload).await;
+
+// Fallible call — returns ConductorApiResult:
+let result = conductor.call_fallible(&cell.zome("my_zome"), "fn_name", payload).await?;
+
+// Cross-agent call — simulate another agent calling with a cap secret:
+let result: MyOutputType = conductor.call_from(
+    &other_agent_key,
+    Some(cap_secret),
+    &cell.zome("my_zome"),
+    "restricted_fn",
+    payload,
+).await;
+```
+
+### Agent Key Generation
+
+```rust
+// Named deterministic keys (same every run — useful for debugging):
+let (alice, bob) = SweetAgents::alice_and_bob();
+let alice = SweetAgents::alice();
+
+// Random keys:
+let agent = SweetAgents::one(conductor.keystore()).await;
+let (a, b, c) = SweetAgents::three(conductor.keystore()).await;
+let agents: Vec<AgentPubKey> = SweetAgents::get(conductor.keystore(), 5).await;
+```
+
+### Inline Zomes (Quick Isolated Tests, No WASM Compile)
+
+```rust
+let mut zomes = SweetInlineZomes::new();
+zomes.function("create_thing", |api, input: MyInput| {
+    let hash = api.create(CreateInput::new(
+        EntryDefLocation::app(0, 0),
+        EntryVisibility::Public,
+        Entry::app(SerializedBytes::try_from(input)?)?,
+        ChainTopOrdering::default(),
+    ))?;
+    Ok(hash)
+});
+let dna = SweetDnaFile::unique_from_inline_zomes(zomes).await.unwrap();
+```
+
+### Single-Conductor Pattern (Validation and Unit Tests)
+
+```rust
+#[tokio::test(flavor = "multi_thread")]
+async fn validate_entry_on_create() {
+    let conductor = SweetConductor::from_config(SweetConductorConfig::standard()).await;
+    let dna = SweetDnaFile::from_bundle(Path::new("workdir/my.dna")).await.unwrap();
+    let app = conductor.setup_app("my-app", &[dna]).await.unwrap();
+    let (cell,) = app.into_tuple();
+    let zome = cell.zome("my_coordinator");
+
+    // Test validation rejection
+    let result = conductor.call_fallible(&zome, "create_my_entry", invalid_payload).await;
+    assert!(result.is_err());
+}
+```
+
+### Common Sweettest Failures
+
+| Symptom | Root Cause | Fix |
+|---------|-----------|-----|
+| Bob can't find Alice's entry | Missing `await_consistency` | Add `await_consistency(&[&alice_cell, &bob_cell]).await.unwrap()` |
+| Compilation error on `call()` | Missing feature flag | Add `features = ["test_utils"]` to holochain dev-dep |
+| Timeout in `await_consistency` | Conductors not networked | Call `conductors.exchange_peer_info().await` after `setup_app` |
+| Wrong type on `call()` | Type annotation missing | Add explicit type: `let result: MyType = conductor.call(...)` |
+| `into_tuple()` fails | Wrong number of cells destructured | Match tuple arity to number of DNA roles |
+
+---
+
+## Tryorama (TypeScript)
+
+### Setup (package.json)
 
 ```json
 {
