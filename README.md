@@ -1,4 +1,4 @@
-# Holochain Claude Skill
+# Holochain Agent Skill
 
 A comprehensive [Agent Skills Open Standard](https://agentskills.io) skill for Holochain hApp development, compatible with Claude Code, GitHub Copilot, Cursor, Augment, and any other tool supporting the standard. Covers the full development spiral from architecture and design through scaffolding, implementation, testing, and deployment.
 
@@ -36,21 +36,21 @@ This skill conforms to the [Agent Skills Open Standard](https://agentskills.io).
 **Option A: Global** — available in all projects
 
 ```bash
-cp -r holochain-claude-skill ~/.claude/skills/holochain
+cp -r holochain-agent-skill ~/.claude/skills/holochain
 ```
 
 **Option B: Project-local** — scoped to one project
 
 ```bash
 mkdir -p your-project/.claude/skills
-cp -r holochain-claude-skill your-project/.claude/skills/holochain
+cp -r holochain-agent-skill your-project/.claude/skills/holochain
 ```
 
 **Option C: Symlink** (recommended — auto-updates with `git pull`)
 
 ```bash
-git clone https://github.com/Soushi888/holochain-claude-skill ~/holochain-claude-skill
-ln -s ~/holochain-claude-skill ~/.claude/skills/holochain
+git clone https://github.com/Soushi888/holochain-agent-skill ~/holochain-agent-skill
+ln -s ~/holochain-agent-skill ~/.claude/skills/holochain
 ```
 
 Once installed, invoke with `/holochain` or let Claude detect Holochain-related work automatically.
@@ -63,7 +63,7 @@ Install to your **project root's** `.claude/skills/` directory — all Agent Ski
 
 ```bash
 mkdir -p .claude/skills
-cp -r holochain-claude-skill .claude/skills/holochain
+cp -r holochain-agent-skill .claude/skills/holochain
 ```
 
 The tool discovers the skill automatically on next launch. For global install paths specific to each tool, refer to the tool's own documentation.
