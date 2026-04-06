@@ -1,25 +1,29 @@
 # Holochain Testing
 
-## Three-Layer Testing Strategy
+## Four-Layer Testing Strategy
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Layer 3 — E2E UI (Playwright + real conductor)     │
-│  "Does the UI render real data and journeys work?"  │
-├─────────────────────────────────────────────────────┤
-│  Layer 2 — Integration (Sweettest, cargo test)      │
-│  "Do zomes, DHT sync, and validation work?"         │
-├─────────────────────────────────────────────────────┤
-│  Layer 1 — Unit (Vitest, stores/services/mappers)   │
-│  "Do computed values and business logic work?"      │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  Layer 4 — Performance (Wind-Tunnel, load testing)               │
+│  "How fast, scalable, and resilient is this under load?"         │
+├──────────────────────────────────────────────────────────────────┤
+│  Layer 3 — E2E UI (Playwright + real conductor)                  │
+│  "Does the UI render real data and journeys work?"               │
+├──────────────────────────────────────────────────────────────────┤
+│  Layer 2 — Integration (Sweettest, cargo test)                   │
+│  "Do zomes, DHT sync, and validation work?"                      │
+├──────────────────────────────────────────────────────────────────┤
+│  Layer 1 — Unit (Vitest, stores/services/mappers)                │
+│  "Do computed values and business logic work?"                   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-| Layer | Tool | What it catches | What it misses |
-|-------|------|----------------|---------------|
-| Unit | Vitest | Store logic, mappers, computed values | Anything touching real Holochain |
-| Integration | Sweettest | Zome logic, validation, DHT sync, auth | UI rendering, routing |
-| E2E UI | Playwright + `@holochain/client` | Full user journeys, real data display | Isolated zome edge cases |
+| Layer | Tool | Output | What it catches |
+|-------|------|--------|----------------|
+| Unit | Vitest | pass/fail | Store logic, mappers, computed values |
+| Integration | Sweettest | pass/fail | Zome logic, validation, DHT sync, auth |
+| E2E UI | Playwright + `@holochain/client` | pass/fail | Full user journeys, real data display |
+| Performance | Wind-Tunnel | metrics (latency/throughput) | Regressions under load, DHT sync lag, soak issues |
 
 **Gap:** Browser-side signal handling (`recv_remote_signal`) is not well covered by any layer — it requires a running UI receiving WebSocket push events from a real conductor.
 
@@ -28,25 +32,28 @@
 ## Framework Overview
 
 - **Sweettest** (`holochain::sweettest`) — Rust-native, in-process conductor. Official Holochain team recommendation. Run with `cargo test`.
-- **Tryorama** (`@holochain/tryorama`) + **Vitest** — TypeScript, WebSocket-based. Scaffolded by default with `hc scaffold`. Deprecated for 0.7+ by the Holochain team.
 - **Playwright** + **`@holochain/client`** — Browser automation against a real conductor. No mocks.
+- **Wind-Tunnel** (`holochain_wind_tunnel_runner`) — Rust load testing. Separate repo. Measures latency, throughput, DHT sync lag. Used for Holochain core CI performance regression. See `WindTunnel.md`.
 
-**Note on Tryorama for e2e:** Tryorama wraps `@holochain/client` under the hood and is designed to clean up the conductor after each scenario — the opposite of what e2e UI tests need. Use `@holochain/client` directly for e2e conductor setup.
+**Note on Tryorama:** Deprecated for HDK 0.7+ by the Holochain team. Use Sweettest for integration tests and Playwright for E2E UI tests.
 
 ---
 
 ## When to Use Which
 
-| Use Case | Sweettest | Tryorama | Playwright |
-|----------|-----------|---------|-----------|
-| Zome logic, validation, CRUD | ✅ Preferred | Works | No |
-| DHT propagation, consistency | ✅ Preferred | Works | No |
-| Multi-agent scenarios | ✅ Preferred | Works | No |
+| Use Case | Sweettest | Playwright | Wind-Tunnel |
+|----------|-----------|-----------|-------------|
+| Zome logic, validation, CRUD | ✅ Preferred | No | No |
+| DHT propagation, consistency | ✅ Preferred | No | No |
+| Multi-agent scenarios | ✅ Preferred | No | No |
 | Inline zomes (no WASM compile) | ✅ Yes | No | No |
 | Direct DHT database inspection | ✅ Yes | No | No |
-| Full UI user journeys | No | No | ✅ Yes |
-| Real data rendered in browser | No | No | ✅ Yes |
-| Language | Rust | TypeScript | TypeScript |
+| Full UI user journeys | No | ✅ Yes | No |
+| Real data rendered in browser | No | ✅ Yes | No |
+| Latency / throughput metrics | No | No | ✅ Yes |
+| DHT sync lag measurement | No | No | ✅ Yes |
+| Soak / sustained load testing | No | No | ✅ Yes |
+| Language | Rust | TypeScript | Rust |
 
 ---
 
@@ -210,237 +217,324 @@ async fn validate_entry_on_create() {
 
 ---
 
-## Tryorama (TypeScript)
+### SweetConductorConfig — Network Tuning
 
-### Setup (package.json)
+Most tests use `SweetConductorConfig::standard()`. Override for stress tests or timing-sensitive scenarios:
 
-```json
-{
-  "scripts": {
-    "test": "vitest run",
-    "test:foundation": "vitest run tests/foundation",
-    "test:integration": "vitest run tests/integration"
-  },
-  "devDependencies": {
-    "@holochain/tryorama": "^0.17.0",
-    "vitest": "^1.0.0"
-  }
-}
-```
+```rust
+let mut config = SweetConductorConfig::standard();
 
-## vitest.config.ts
-
-```typescript
-import { defineConfig } from "vitest/config";
-
-export default defineConfig({
-  test: {
-    testTimeout: 60000,   // Holochain tests are slow — 60s minimum
-    hookTimeout: 60000,
-  },
+// Tune gossip frequency (default: 1000ms)
+config.tune_network_config(|net| {
+    net.gossip_initiate_interval_ms = 500;        // More frequent gossip
+    net.gossip_round_timeout_ms = 20_000;          // Longer timeout
+    net.gossip_min_initiate_interval_ms = 500;
+    net.gossip_initiate_jitter_ms = 50;
 });
-```
 
----
-
-## Two-Agent Scenario (the Standard Pattern)
-
-Most Holochain tests require two agents to validate DHT propagation:
-
-```typescript
-import { runScenarioWithTwoAgents } from "@holochain/tryorama";
-import { assert } from "vitest";
-import { it } from "vitest";
-
-it("agent B can read entry created by agent A", async () => {
-  await runScenarioWithTwoAgents(async (t, alice, bob) => {
-    // Get the cell for a specific DNA role
-    const aliceCell = alice.namedCells.get("my_dna_role_name");
-    const bobCell = bob.namedCells.get("my_dna_role_name");
-
-    // Alice creates an entry
-    const record = await aliceCell.callZome({
-      zome_name: "my_zome",
-      fn_name: "create_my_entry",
-      payload: {
-        title: "Test Entry",
-        description: "Created by Alice",
-        status: "Active",
-      },
-    });
-
-    assert.ok(record);
-    const originalHash = record.signed_action.hashed.hash;
-
-    // MANDATORY: dhtSync before any cross-agent read
-    await dhtSync([alice, bob], alice.cells[0].cell_id[0]);
-
-    // Bob reads Alice's entry
-    const fetched = await bobCell.callZome({
-      zome_name: "my_zome",
-      fn_name: "get_my_entry",
-      payload: originalHash,
-    });
-
-    assert.ok(fetched);
-    assert.equal(fetched.entry.Present.entry.title, "Test Entry");
-  });
+// Tune validation and countersigning
+config.tune_conductor(|tune| {
+    tune.sys_validation_retry_delay = Some(Duration::from_secs(3));
+    tune.countersigning_resolution_retry_delay = Some(Duration::from_secs(5));
+    tune.countersigning_resolution_retry_limit = Some(10);
 });
+
+let conductor = SweetConductor::from_config_rendezvous(
+    config,
+    SweetLocalRendezvous::new().await,
+).await;
 ```
 
 ---
 
-## CRITICAL: dhtSync is MANDATORY Before Cross-Agent Reads
+### Installation Patterns
 
-**The #1 cause of flaky tests in Holochain: missing `dhtSync`.**
+#### Single Conductor, Multiple Agents
 
-```typescript
-import { dhtSync } from "@holochain/tryorama";
+```rust
+// Install same app for N generated agents (app IDs: "{prefix}0", "{prefix}1", ...)
+let apps: SweetAppBatch = conductor
+    .setup_apps("my-app", 3, &[dna_file])
+    .await.unwrap();
+let cells: Vec<SweetCell> = apps.cells_flattened();
 
-// After Alice creates/updates/deletes, BEFORE Bob reads:
-await dhtSync([alice, bob], alice.cells[0].cell_id[0]);
+// Install for a specific pre-generated agent
+let agent = SweetAgents::one(conductor.keystore()).await;
+let app: SweetApp = conductor
+    .setup_app_for_agent("my-app", agent.clone(), &[dna_file])
+    .await.unwrap();
+
+// Install for multiple pre-generated agents
+let agents = SweetAgents::get(conductor.keystore(), 3).await;
+let apps: SweetAppBatch = conductor
+    .setup_app_for_agents("my-app", &agents, &[dna_file])
+    .await.unwrap();
 ```
 
-**Why it's needed:** DHT propagation is asynchronous. Without `dhtSync`, Bob may try to `get()` an entry before the gossip has propagated to his node. The test passes 70% of the time (when fast) and fails 30% (when slow). `dhtSync` waits for full propagation.
+#### Explicit DNA Role Binding
 
-**Rule:** Any test where Agent B reads data created by Agent A requires `dhtSync` between the write and the read.
+```rust
+// Bind DNA to a named role (required when role name differs from DNA hash)
+let dna_with_role: (RoleName, DnaFile) = ("my_role".into(), dna_file);
+let app = conductor.setup_app("my-app", &[dna_with_role]).await.unwrap();
+```
+
+#### Multi-Cell App (Multiple DNA Roles)
+
+```rust
+let role_a = ("role_a", dna_a);
+let role_b = ("role_b", dna_b);
+let app = conductor.setup_app("my-app", &[role_a, role_b]).await.unwrap();
+
+// Destructure cells by role order
+let (cell_a, cell_b) = app.into_tuple();
+```
+
+#### SweetAppBatch Destructuring
+
+```rust
+// Two apps, one cell each
+let ((alice,), (bob,)) = conductors
+    .setup_app("my-app", &[dna_file])
+    .await.unwrap()
+    .into_tuples();
+
+// Two apps, two cells each
+let ((alice_a, alice_b), (bob_a, bob_b)) = conductors
+    .setup_app("my-app", &[dna_a, dna_b])
+    .await.unwrap()
+    .into_tuples();
+```
 
 ---
 
-## Update Test Pattern
+### SweetConductorBatch — Advanced Patterns
 
-The update pattern requires fetching the `previous_action_hash` from the latest record:
+```rust
+// From custom config applied to all conductors
+let conductors = SweetConductorBatch::from_config_rendezvous(
+    3,
+    SweetConductorConfig::standard(),
+).await;
 
-```typescript
-it("update entry requires previous action hash", async () => {
-  await runScenarioWithTwoAgents(async (t, alice, bob) => {
-    const aliceCell = alice.namedCells.get("my_dna");
+// From different configs per conductor
+let configs = vec![config_a, config_b, config_c];
+let conductors = SweetConductorBatch::from_configs_rendezvous(configs).await;
 
-    // Create
-    const created = await aliceCell.callZome({
-      zome_name: "my_zome",
-      fn_name: "create_my_entry",
-      payload: { title: "Original", status: "Active" },
+// Force peer visibility between two specific conductors (unidirectional)
+conductors.reveal_peer_info(0, 1).await;  // conductor 0 sees conductor 1
+
+// Persist databases for debugging
+conductors[0].persist_dbs();  // must call BEFORE shutdown
+```
+
+---
+
+### App Lifecycle Management
+
+```rust
+// Disable then re-enable an app
+conductor.disable_app("my-app".to_string(), DisabledAppReason::User).await.unwrap();
+conductor.enable_app("my-app".to_string()).await.unwrap();
+
+// Hot-reload coordinator zomes without restarting conductor
+conductor.update_coordinators(
+    cell.cell_id().clone(),
+    updated_coordinator_zomes,
+    vec![new_wasm],
+).await.unwrap();
+
+// Create a clone cell of an existing role
+let cloned = conductor.create_clone_cell(
+    &"my-app".to_string(),
+    CreateCloneCellPayload {
+        role_name: "clonable_role".into(),
+        modifiers: DnaModifiersOpt::default().with_network_seed("clone-1"),
+        membrane_proof: None,
+        name: Some("My Clone".to_string()),
+    },
+).await.unwrap();
+
+// Restart conductor
+conductor.shutdown().await;
+conductor.startup(false).await;
+```
+
+---
+
+### Database Access and Inspection
+
+Use these for debugging or asserting internal state without going through zome calls:
+
+```rust
+// Access authored and DHT databases directly
+let authored_db = cell.authored_db();
+let dht_db = cell.dht_db();
+let dht_db_from_conductor = conductor.get_dht_db(cell.dna_hash()).unwrap();
+
+// Read the full source chain for an agent
+let chain = conductor
+    .get_agent_source_chain(&agent_key, cell.dna_hash())
+    .await;
+
+// Get invalid / rejected ops (validates your validation logic)
+let invalid_ops = conductor.get_invalid_integrated_ops(&dht_db).await.unwrap();
+assert!(invalid_ops.is_empty(), "Found invalid ops: {invalid_ops:?}");
+
+// Persist databases to disk before shutdown (for debugging)
+let path = conductor.persist_dbs();
+println!("DB saved to: {}", path.display());
+conductor.shutdown().await;
+```
+
+---
+
+### Network and Gossip Testing
+
+```rust
+// Wait for specific peers to become visible on this conductor
+conductor.wait_for_peer_visible(
+    vec![alice_pubkey.clone(), bob_pubkey.clone()],
+    Some(cell.cell_id().clone()),
+    Duration::from_secs(30),
+).await.unwrap();
+
+// Require at least N peers before gossip starts (avoids false positives)
+conductor
+    .require_initial_gossip_activity_for_cell(&cell, 2, Duration::from_secs(30))
+    .await.unwrap();
+
+// Declare this node holds the full DHT arc (affects peer routing)
+conductor.declare_full_storage_arcs(cell.dna_hash()).await;
+
+// Check consistency without blocking (instant snapshot)
+check_consistency(&[&alice_cell, &bob_cell]).await.unwrap();
+
+// Drop and restart signaling server (simulates network partition)
+let rendezvous = SweetLocalRendezvous::new_raw().await;
+rendezvous.drop_sig().await;   // kill signal channel
+// ... test behavior during outage ...
+rendezvous.start_sig().await;  // restore
+```
+
+---
+
+### Op Integration Verification
+
+Assert that ops are fully integrated without using `await_consistency`:
+
+```rust
+// All ops in the DHT for this DNA are integrated
+let integrated = conductor.all_ops_integrated(cell.dna_hash()).unwrap();
+assert!(integrated, "Ops not yet integrated");
+
+// All ops authored by a specific agent are integrated
+let author_integrated = conductor
+    .all_ops_of_author_integrated(cell.dna_hash(), cell.agent_pubkey())
+    .unwrap();
+```
+
+---
+
+### Time-Based Testing (Scheduled Functions)
+
+```rust
+// Start scheduler with custom interval
+conductor.start_scheduler(Duration::from_millis(100)).await.unwrap();
+
+// Manually fire scheduled functions at a specific timestamp
+let target_time = Timestamp::now() + Duration::from_secs(3600); // 1 hour in future
+conductor.dispatch_scheduled_fns(target_time).await;
+
+// Verify effects after scheduler fires
+let result: Vec<Record> = conductor.call(&zome, "get_scheduled_entries", ()).await;
+assert!(!result.is_empty());
+```
+
+---
+
+### SweetInlineZomes — Integrity and Coordinator Separation
+
+The full pattern separates integrity (validation) from coordinator (business logic):
+
+```rust
+use holochain::sweettest::{SweetInlineZomes, SweetDnaFile};
+use holochain_zome_types::{EntryDef, EntryVisibility};
+
+let entry_def = EntryDef {
+    id: "my_entry".into(),
+    visibility: EntryVisibility::Public,
+    required_validations: RequiredValidations::default(),
+    cache_at_agent_activity: false,
+    required_validation_type: Default::default(),
+};
+
+let zomes = SweetInlineZomes::new(vec![entry_def], /* num_link_types */ 0)
+    // Integrity zome: validation callbacks
+    .integrity_function("validate", |_api, _op: Op| {
+        Ok(ValidateCallbackResult::Valid)
+    })
+    // Coordinator zome: zome functions
+    .function("create_entry", |api, input: MyInput| {
+        let hash = api.create(CreateInput::new(
+            EntryDefLocation::app(0, 0),
+            EntryVisibility::Public,
+            Entry::app(SerializedBytes::try_from(input)?)?,
+            ChainTopOrdering::default(),
+        ))?;
+        Ok(hash)
+    })
+    .function("get_entry", |api, hash: ActionHash| {
+        api.get(vec![GetInput::new(hash.into(), GetOptions::default())])
+            .map(|gets| gets.into_iter().next().flatten())
     });
-    const originalHash = created.signed_action.hashed.hash;
 
-    // SYNC before update (even same-agent, sometimes needed for path links)
-    await dhtSync([alice, bob], alice.cells[0].cell_id[0]);
+let (dna, _, _) = SweetDnaFile::unique_from_inline_zomes(zomes).await;
+```
 
-    // Fetch latest to get previous_action_hash
-    const latestRecord = await aliceCell.callZome({
-      zome_name: "my_zome",
-      fn_name: "get_latest_my_entry",
-      payload: originalHash,
-    });
-    const previousHash = latestRecord.signed_action.hashed.hash;
+**Zome name constants:** `SweetInlineZomes::INTEGRITY` = `"integrity"`, `SweetInlineZomes::COORDINATOR` = `"coordinator"`.
 
-    // Update using BOTH original and previous hashes
-    const updated = await aliceCell.callZome({
-      zome_name: "my_zome",
-      fn_name: "update_my_entry",
-      payload: {
-        original_action_hash: originalHash,
-        previous_action_hash: previousHash,
-        updated_entry: { title: "Updated", status: "Active" },
-      },
-    });
+---
 
-    assert.ok(updated);
-    assert.equal(updated.entry.Present.entry.title, "Updated");
-  });
-});
+### WebSocket Interface Testing
+
+For tests that need to verify WebSocket behavior (signals, app interface):
+
+```rust
+// Get admin WebSocket client
+let (admin_sender, _admin_recv) = conductor.admin_ws_client::<AdminResponse>().await;
+
+// Get app WebSocket client (auto-authenticated)
+let (app_sender, mut app_recv) = conductor
+    .app_ws_client::<AppResponse>("my-app".to_string())
+    .await;
+
+// Or authenticate manually for custom setup
+let (app_sender, _) = websocket_client_by_port(app_port).await.unwrap();
+authenticate_app_ws_client(app_sender.clone(), admin_port, "my-app".to_string()).await;
 ```
 
 ---
 
-## Sample Data Helpers
-
-Use spread pattern for flexible test data:
-
-```typescript
-// tests/helpers.ts
-export function sampleMyEntry(overrides: Partial<MyEntry> = {}): MyEntry {
-  return {
-    title: "Test Entry",
-    description: "A test entry for automated testing",
-    status: "Active",
-    tags: [],
-    ...overrides,  // Caller overrides specific fields
-  };
-}
-
-// Usage in test:
-const record = await aliceCell.callZome({
-  zome_name: "my_zome",
-  fn_name: "create_my_entry",
-  payload: sampleMyEntry({ title: "Custom Title" }),
-});
-```
-
----
-
-## Test Organization Layers
-
-```
-tests/
-├── foundation/           # Single-agent, happy-path CRUD
-│   └── my_entry.test.ts  # Create, read, update, delete by same agent
-├── integration/          # Two-agent, cross-zome, collection reads
-│   └── my_entry.test.ts  # DHT propagation, agent index, path queries
-└── scenario/             # Full user journeys
-    └── marketplace.test.ts  # Multi-step business logic flows
-```
-
-**Foundation first:** Write and pass foundation tests before integration tests. Foundation tests catch basic API issues without the complexity of multi-agent sync.
-
----
-
-## Cell Access
-
-```typescript
-// Access by DNA role name (defined in happ.yaml)
-const cell = agent.namedCells.get("my_dna_role");
-
-// Or by index (less readable)
-const cell = agent.cells[0];
-
-// Cell ID for dhtSync
-const dnaHash = alice.cells[0].cell_id[0];
-await dhtSync([alice, bob], dnaHash);
-```
-
----
-
-## Test Commands
-
-```bash
-bun run test                       # Run all tests
-bun run test:foundation            # Foundation layer only
-bun run test:integration           # Integration layer only
-vitest run --reporter verbose      # Verbose output
-vitest run tests/my_entry.test.ts  # Single file
-```
-
----
-
-## Common Test Failures
+### Common Sweettest Failures (Extended)
 
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
-| Bob can't find Alice's entry | Missing `dhtSync` | Add `await dhtSync([alice, bob], dnaHash)` |
-| Update fails with "wrong hash" | Using `original_hash` as `previous_hash` | Fetch latest record first, use `signed_action.hashed.hash` |
-| Test times out at 30s | Default timeout too short | Set `testTimeout: 60000` in vitest config |
-| `namedCells.get()` returns undefined | Wrong role name | Check `roles[].name` in `happ.yaml` |
-| Validation error on create | Entry struct mismatch | Check serde field names match Rust struct |
+| Bob can't find Alice's entry | Missing `await_consistency` | Add `await_consistency(&[&alice_cell, &bob_cell]).await.unwrap()` |
+| Compilation error on `call()` | Missing feature flag | Add `features = ["test_utils"]` to holochain dev-dep |
+| Timeout in `await_consistency` | Conductors not networked | Call `conductors.exchange_peer_info().await` after `setup_app` |
+| Wrong type on `call()` | Type annotation missing | Add explicit type: `let result: MyType = conductor.call(...)` |
+| `into_tuple()` fails | Wrong number of cells destructured | Match tuple arity to number of DNA roles |
+| Invalid ops present unexpectedly | Validation logic accepting bad data | Use `get_invalid_integrated_ops()` to inspect rejected ops |
+| `reveal_peer_info` / gossip never starts | Full arc not declared | Call `declare_full_storage_arcs()` on test conductors |
+| Scheduled fn never fires | Scheduler not started | Call `start_scheduler()` or `dispatch_scheduled_fns(timestamp)` |
+| WebSocket auth fails in test | Using wrong port | Use `admin_ws_client()` for admin, `app_ws_client()` for app calls |
 
 ---
 
 ## E2E UI Testing (Playwright + Real Conductor)
 
-For full end-to-end tests that drive the UI against a real Holochain backend — no mocks.
-
-**Do not use Tryorama for this.** Tryorama tears down the conductor after each scenario, which is the opposite of what Playwright needs (conductor must stay alive while the browser runs). Use `@holochain/client` directly.
+For full end-to-end tests that drive the UI against a real Holochain backend — no mocks. Use `@holochain/client` directly — Tryorama is deprecated.
 
 ### Setup (package.json)
 

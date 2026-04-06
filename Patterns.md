@@ -545,6 +545,59 @@ path.ensure()?;
 
 ---
 
+## `get_details()` + `Details::Record` Deserialization
+
+```rust
+pub fn get_original_record(hash: ActionHash) -> ExternResult<Option<Record>> {
+    let Some(details) = get_details(hash, GetOptions::default())? else {
+        return Ok(None);
+    };
+    match details {
+        Details::Record(d) => Ok(Some(d.record)),
+        _ => Err(wasm_error!(WasmErrorInner::Guest("Expected record".into()))),
+    }
+}
+```
+
+**In `post_commit` — extracting app entry type from a committed action:**
+
+```rust
+let (zome_index, entry_index) = match record.action().entry_type() {
+    Some(EntryType::App(AppEntryDef { zome_index, entry_index, .. })) => (zome_index, entry_index),
+    _ => return Ok(None),
+};
+EntryTypes::deserialize_from_type(*zome_index, *entry_index, entry)
+```
+
+---
+
+## Update Chain Utilities
+
+### `find_original_action_hash()` — traverse backward to the Create action
+
+Given any action hash in an update chain, loop back to the original Create:
+
+```rust
+pub fn find_original_action_hash(action_hash: ActionHash) -> ExternResult<OriginalActionHash> {
+    let mut current_hash = action_hash;
+    loop {
+        let record = get(current_hash.clone(), GetOptions::default())?
+            .ok_or(wasm_error!(WasmErrorInner::Guest("Record not found".into())))?;
+        match record.action().clone() {
+            Action::Create(_) => return Ok(OriginalActionHash(current_hash)),
+            Action::Update(u) => { current_hash = u.original_action_address; }
+            _ => return Err(wasm_error!(WasmErrorInner::Guest("Unexpected action type".into()))),
+        }
+    }
+}
+```
+
+### `get_all_revisions_for_entry()` — original + all updates chronologically
+
+Use `LinkQuery::new()` + `GetStrategy::Local` over the `{Entry}Updates` link type, prepend the original record. Returns all versions in order from oldest to newest.
+
+---
+
 ## Path Status Hierarchies
 
 For status-filtered global collections, use hierarchical path strings rather than a single path + runtime filtering:
