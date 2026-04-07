@@ -1,5 +1,7 @@
 # Holochain Agent Skill
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Soushi888/holochain-agent-skill)
+
 A comprehensive [Agent Skills Open Standard](https://agentskills.io) skill for Holochain hApp development, compatible with Claude Code, GitHub Copilot, Cursor, Augment, and any other tool supporting the standard. Covers the full development spiral from architecture and design through scaffolding, implementation, testing, and deployment.
 
 ## What It Covers
