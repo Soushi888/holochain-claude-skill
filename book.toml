@@ -9,6 +9,8 @@ src = "."
 build-dir = "book"
 create-missing = false
 
+[preprocessor.frontmatter-strip]
+
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"

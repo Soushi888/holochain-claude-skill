@@ -28,6 +28,9 @@ jobs:
         with:
           mdbook-version: "latest"
 
+      - name: Install mdBook preprocessors
+        run: cargo install mdbook-frontmatter-strip
+
       - name: Build documentation
         run: mdbook build
 
