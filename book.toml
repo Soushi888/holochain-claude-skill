@@ -1,0 +1,16 @@
+[book]
+title = "Holochain Agent Skill"
+description = "Expert AI assistant for Holochain hApp development — architecture, patterns, scaffolding, testing, and deployment."
+authors = ["soushi888"]
+language = "en"
+src = "."
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/Soushi888/holochain-agent-skill"
+edit-url-template = "https://github.com/Soushi888/holochain-agent-skill/edit/main/{path}"

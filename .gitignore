@@ -8,3 +8,6 @@ MEMORY/
 # Local aliases
 *.local.*
 *.local
+
+# mdBook output
+book/

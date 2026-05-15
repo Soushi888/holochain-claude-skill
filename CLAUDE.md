@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A vanilla agent skill for Holochain hApp development. It is a documentation-only repository — no Rust, no TypeScript, no build system. All files are Markdown. The skill is loaded by Claude Code when a user invokes `/holochain` or when Holochain-related work is detected.
 
+**Documentation site:** The repo also generates a static documentation site via mdBook (`book.toml` + `SUMMARY.md`). Run `mdbook build` to produce `book/` (gitignored). GitHub Actions deploys it to GitHub Pages on every push to `main`.
+
 **PAI-independence constraint:** This skill must work with zero PAI infrastructure (`~/.claude/PAI/` not required). No voice notification curls, no Algorithm routing, no PROJECTS.md references. All content must be self-contained.
 
 **License:** Apache-2.0
@@ -21,11 +23,14 @@ AccessControl.md      Capability grants, cap claims, admin-only patterns, init()
 CellCloning.md        Clone cells, partitioned data, createCloneCell, clone_limit
 ErrorHandling.md      thiserror enums, WasmError, ExternResult patterns
 Testing.md            Tryorama + Vitest setup, two-agent scenarios, dhtSync, test organization
+WindTunnel.md         Performance/load testing with wind-tunnel framework
 TypeScript.md         holochain-client setup, callZome, signals, SvelteKit integration
 Deployment.md         Kangaroo-Electron packaging, .webhapp bundling, CI/CD, versioning
 Workflows/            Step-by-step guided workflows (called from SKILL.md routing table)
 docs/                 Requirements spec and roadmap (not loaded by the skill itself)
 README.md             Installation instructions and quick start for humans
+SUMMARY.md            mdBook table of contents (do not load as skill context — doc tooling only)
+book.toml             mdBook configuration (doc tooling only)
 ```
 
 ## Routing Architecture
@@ -40,8 +45,8 @@ Context files are loaded **on demand**, not all at once. When editing `SKILL.md`
 ## Version Pins (update all occurrences when bumping)
 
 ```
-hdk = "=0.6.0"
-hdi = "=0.7.0"
+hdk = "=0.6.1"
+hdi = "=0.7.1"
 holonix ref=main-0.6
 ```
 
