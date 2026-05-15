@@ -15,8 +15,8 @@ compatibility: >
   hc scaffold and nix flake updates.
 metadata:
   author: soushi888
-  version: "0.1.0"
-  holochain-versions: "hdk=0.6.0, hdi=0.7.0, holonix ref=main-0.6"
+  version: "0.2.0"
+  holochain-versions: "hdk=0.6.1, hdi=0.7.1, holonix ref=main-0.6"
 ---
 
 # Holochain Development Skill
@@ -54,7 +54,8 @@ Load on demand based on task:
 
 | File | Load When |
 |------|-----------|
-| `Architecture.md` | Coordinator/integrity split, DNA structure, Cargo workspace, Nix, progenitor (dna_info, dna properties, network_seed), private entries, multi-DNA (multiple roles, bridge call, OtherRole) |
+| `Architecture.md` | Coordinator/integrity split, DNA structure, Cargo workspace, Nix, dna_info, network_seed, private entries, multi-DNA (multiple roles, bridge call, OtherRole) |
+| `Progenitor.md` | Progenitor pattern, DnaProperties struct, check_if_progenitor, bootstrap mode, coordinator guard, integrity enforcement (Moss pattern), auto-registration in create_user, deploy-time injection (dna.yaml / Sweettest / Kangaroo / Moss) |
 | `Scaffold.md` | New project setup, Holonix installation, Nix flake, hc CLI, `hc scaffold` commands, adding a new domain to existing project |
 | `Patterns.md` | Entry types, link types, CRUD, cross-zome calls, validation, HDK 0.6 API (GetStrategy, LinkQuery, Local vs Network), must_get, signals (remote signal, init cap grant) |
 | `AccessControl.md` | Cap grants, capability system, cap claim, recv_remote_signal setup, admin-only access |
@@ -68,7 +69,7 @@ Load on demand based on task:
 ## Quick Reference
 
 ```
-Versions (current stable):  hdk = "=0.6.0"   hdi = "=0.7.0"   holonix ref=main-0.6
+Versions (current stable):  hdk = "=0.6.1"   hdi = "=0.7.1"   holonix ref=main-0.6
 Dev commands:  nix develop  |  hc s sandbox generate workdir/  |  bun run test
 Scaffold:      hc scaffold entry-type MyEntry  |  hc scaffold link-type AgentToMyEntry
 ```

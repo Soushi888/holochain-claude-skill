@@ -1,0 +1,293 @@
+# Progenitor Pattern
+
+The progenitor is a single agent whose public key is burned into the DNA at install time via DNA `modifiers.properties`. Every peer in the network can read the progenitor's identity deterministically, making admin authority immutable and cryptographically verifiable without a centralized registry.
+
+Two reference implementations inform this page:
+- **Requests & Offers** (`happenings-community/requests-and-offers`) — coordinator-only enforcement, auto-registration via the first `create_user` call
+- **Moss** (`lightningrodlabs/moss`) — opt-in at group creation, integrity-level enforcement in `validate()`, progenitor key transported via invite-link
+
+---
+
+## 1. DnaProperties struct
+
+Place this in a shared `utils` crate consumed by all integrity and coordinator zomes. The `SerializedBytes` derive is required — Holochain serializes YAML properties to MessagePack at install time, and `try_into()` decodes it:
+
+```rust
+// dnas/my_dna/utils/src/dna_properties.rs
+use hdi::prelude::*;
+
+#[derive(Serialize, Deserialize, SerializedBytes, Debug, Clone)]
+pub struct DnaProperties {
+    pub progenitor_pubkey: Option<String>,  // null = dev / bootstrap mode
+}
+
+impl DnaProperties {
+    pub fn get() -> ExternResult<Self> {
+        dna_info()?
+            .modifiers
+            .properties
+            .try_into()
+            .map_err(|e| wasm_error!(WasmErrorInner::Guest(
+                format!("Failed to deserialize DnaProperties: {e}")
+            )))
+    }
+
+    pub fn get_progenitor_pubkey() -> ExternResult<Option<AgentPubKey>> {
+        match Self::get()?.progenitor_pubkey {
+            None => Ok(None),
+            Some(s) => AgentPubKey::try_from(s).map(Some).map_err(|e| {
+                wasm_error!(WasmErrorInner::Guest(
+                    format!("Invalid progenitor pubkey in DNA properties: {e}")
+                ))
+            }),
+        }
+    }
+}
+```
+
+```rust
+// dnas/my_dna/utils/src/lib.rs
+pub fn check_if_progenitor() -> ExternResult<bool> {
+    match DnaProperties::get_progenitor_pubkey()? {
+        None => Ok(false),   // no progenitor configured → bootstrap mode
+        Some(progenitor) => Ok(progenitor == agent_info()?.agent_initial_pubkey),
+    }
+}
+```
+
+`check_if_progenitor()` returns `false` when no progenitor is configured. Bootstrap logic (who becomes the first admin in that case) lives in your application code — see section 4.
+
+> **Moss variant:** Moss uses `{ progenitor: AgentPubKeyB64 | null }` (field name `progenitor`, not `progenitor_pubkey`) with the same `Option<String>` Rust type and the same `SerializedBytes` deserialization pattern.
+
+---
+
+## 2. Coordinator guard
+
+Expose `is_progenitor` as an `hdk_extern` for the UI, and guard admin functions with `check_if_progenitor()`:
+
+```rust
+#[hdk_extern]
+pub fn is_progenitor(_: ()) -> ExternResult<bool> {
+    check_if_progenitor()
+}
+
+#[hdk_extern]
+pub fn add_administrator(input: EntityAgent) -> ExternResult<bool> {
+    let is_prog = check_if_progenitor()?;
+    let is_admin = check_if_agent_is_administrator(agent_info()?.agent_initial_pubkey)?;
+    let progenitor_configured = DnaProperties::get_progenitor_pubkey()?.is_some();
+    let is_bootstrap = !progenitor_configured
+        && get_all_administrators_links(input.entity.clone())?.is_empty();
+
+    if !is_prog && !is_admin && !is_bootstrap {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the progenitor or an existing administrator can add administrators".into()
+        )));
+    }
+    register_administrator(input)?;
+    Ok(true)
+}
+```
+
+The `is_bootstrap` branch handles dev mode: when no progenitor is configured and no admins exist yet, the first caller of `add_administrator` is allowed through.
+
+---
+
+## 3. Integrity enforcement (Moss pattern — optional hardening)
+
+R&O enforces the progenitor check only in the coordinator. Moss additionally enforces it in `validate()` so that a malicious peer cannot bypass the coordinator by calling zome functions directly:
+
+```rust
+// In integrity validate() — dna_info() is safe here: deterministic, reads own DNA metadata
+fn validate_create_admin_entry(
+    action: Create,
+    _entry: AdminEntry,
+) -> ExternResult<ValidateCallbackResult> {
+    match DnaProperties::get()?.progenitor_pubkey {
+        None => Ok(ValidateCallbackResult::Valid),  // bootstrap mode: no restriction
+        Some(progenitor_str) => {
+            let progenitor = AgentPubKey::try_from(progenitor_str)
+                .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{e}"))))?;
+            if action.author != progenitor {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Only the progenitor can author this entry".into(),
+                ));
+            }
+            Ok(ValidateCallbackResult::Valid)
+        }
+    }
+}
+```
+
+**Rules for validation:**
+- `dna_info()` is safe — reads the DNA's own metadata, fully deterministic
+- Use `action.author` — you are validating someone else's action, not checking yourself
+- `get()` (DHT read) is forbidden in validation — breaks determinism; inspect only the op itself
+
+**Tradeoff:** Coordinator-only (R&O) is simpler and sufficient for most apps. Integrity enforcement (Moss) is defense-in-depth for higher-security entries where you cannot trust peers to follow coordinator rules.
+
+---
+
+## 4. Bootstrap and auto-registration
+
+`init()` runs on every agent at install time and has no DHT state to query. It is NOT the place to auto-register the progenitor. Instead, put auto-registration inside your first entity creation function (e.g. `create_user`, `create_profile`):
+
+```rust
+// In coordinator create_user / create_profile — after creating the entry:
+let is_prog = check_if_progenitor()?;
+let progenitor_configured = DnaProperties::get_progenitor_pubkey()?.is_some();
+
+let should_auto_register = if progenitor_configured {
+    is_prog  // production: only the progenitor auto-gets admin
+} else {
+    // dev / bootstrap: first agent whose profile creation finds no existing admins
+    let existing_admins: Vec<Link> = external_local_call(
+        "get_all_administrators_links",
+        "administration",
+        "network".to_string(),
+    )?;
+    existing_admins.is_empty()
+};
+
+if should_auto_register {
+    external_local_call(
+        "add_administrator",
+        "administration",
+        EntityActionHashAgents {
+            entity: "network".to_string(),
+            entity_original_action_hash: OriginalActionHash(profile_hash.clone()),
+            agent_pubkeys: vec![agent_info()?.agent_initial_pubkey],
+        },
+    )?;
+}
+```
+
+`init()` itself should only set up the unrestricted signal cap grant and return `Pass`:
+
+```rust
+#[hdk_extern]
+pub fn init(_: ()) -> ExternResult<InitCallbackResult> {
+    let mut functions = HashSet::new();
+    functions.insert((zome_info()?.name, "recv_remote_signal".into()));
+    create_cap_grant(ZomeCallCapGrant {
+        tag: "recv_remote_signal".into(),
+        access: CapAccess::Unrestricted,
+        functions: GrantedFunctions::Listed(functions),
+    })?;
+    Ok(InitCallbackResult::Pass)
+}
+```
+
+---
+
+## 5. Setting properties at deploy time
+
+### Dev / CI — `dna.yaml`
+
+Leave null for local development; the first-user bootstrap handles the admin seed:
+
+```yaml
+# workdir/dna.yaml
+integrity:
+  properties:
+    progenitor_pubkey: null    # bootstrap mode; set a key for production tests
+  zomes:
+    - name: my_domain_integrity
+      bundled: "./zomes/integrity/my_domain_integrity.wasm"
+```
+
+Get an agent pubkey from a running sandbox:
+
+```bash
+hc sandbox call --running my-app my_zome get_agent_info '{}' \
+  | jq -r '.agent_initial_pubkey'
+```
+
+### Sweettest
+
+```rust
+let props = DnaProperties { progenitor_pubkey: Some(alice_pubkey.to_string()) };
+let props_bytes = SerializedBytes::try_from(props).unwrap();
+let dna = SweetDnaFile::from_bundle_with_overrides(
+    Path::new(DNA_PATH),
+    DnaModifiersOpt::default().with_properties(props_bytes),
+).await?;
+```
+
+### Kangaroo / custom Electron
+
+Make the installing agent the progenitor at runtime:
+
+```typescript
+import { encode } from "@msgpack/msgpack";
+import { encodeHashToBase64 } from "@holochain/client";
+
+const agentPubKey = await adminWs.generateAgentPubKey();
+
+await adminWs.installApp({
+  installed_app_id: "my-app",
+  agent_key: agentPubKey,
+  bundle: appBundle,
+  roles_settings: {
+    my_dna: {
+      type: "provisioned",
+      value: {
+        modifiers: {
+          properties: encode({ progenitor_pubkey: encodeHashToBase64(agentPubKey) }),
+        },
+      },
+    },
+  },
+});
+```
+
+Note `value` wraps `modifiers` — this is required by the Holochain client `RolesSettings` type.
+
+### Moss (group DNA)
+
+Moss treats progenitor as an opt-in per-group choice via a `withProgenitor` boolean in the group creation UI. Joiners receive the creator's key via invite-link and install with it verbatim — they never substitute their own key, so all peers derive the same DNA hash:
+
+```typescript
+// Creator (src/main/index.ts in lightningrodlabs/moss)
+const properties = withProgenitor
+  ? { progenitor: encodeHashToBase64(agentPubKey) }
+  : { progenitor: null };
+
+await adminWebsocket.installApp({
+  ...
+  roles_settings: {
+    group: {
+      type: "provisioned",
+      value: { modifiers: { properties } },
+    },
+  },
+});
+
+// Joiner: properties come verbatim from the invite-link (&progenitor=uhCAk... or "null")
+// Joiners NEVER substitute their own key — DNA hashes must converge across all peers
+```
+
+**Moss-specific conventions:**
+- Field name is `progenitor` (not `progenitor_pubkey`)
+- Progenitor injection is only for the `group` DNA — Moss applets must inject their own if needed
+- The invite-link carries `networkSeed` + `progenitor` together; validation confirms the key starts with `uhCAk` and decodes to 39 bytes
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Fix |
+|---------|-----|
+| Registering progenitor as admin inside `init()` | Put auto-registration in your first entity creation fn (e.g. `create_user`) |
+| Coordinator-only guard for high-security entries | Add integrity enforcement (Moss pattern) if peers must not bypass the coordinator |
+| `agent_info()?.agent_initial_pubkey` used in `validate()` | Use `action.author` — you are checking the action author, not yourself |
+| `get()` (DHT read) inside `validate()` | Forbidden — only `dna_info()`, `zome_info()`, and the op itself are safe |
+| Missing `SerializedBytes` derive on `DnaProperties` | The `.try_into()` deserialization will fail at runtime without it |
+| Missing `value` wrapper in `roles_settings` TypeScript | `{ type: "provisioned", value: { modifiers: { ... } } }` — `value` is required |
+| Joiner substituting their own key as progenitor | Copy the creator's key verbatim (invite-link / config); joiners must match DNA hash |
+| Hardcoding a pubkey in source | Always read from `dna_info().modifiers.properties` |
+| Progenitor key rotation | The pattern does not support it — use role-based access (`AccessControl.md`) for delegatable authority |
+
+---
+
+**Cross-ref:** `AccessControl.md` — delegating admin authority beyond the progenitor | `Workflows/DesignAccessControl.md` — choosing the right access model for your app

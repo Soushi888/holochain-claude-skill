@@ -76,8 +76,8 @@ members = [
 ]
 
 [workspace.dependencies]
-hdi = "=0.7.0"
-hdk = "=0.6.0"
+hdi = "=0.7.1"
+hdk = "=0.6.1"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 ```
@@ -187,58 +187,19 @@ bun run test
 
 ## DNA Properties & Progenitor Pattern
 
-DNA properties let you embed configuration into the DNA at deploy time — no on-chain transactions needed.
+DNA properties let you embed configuration into the DNA at deploy time. The **progenitor pattern** uses this to designate one agent as the permanent administrator of a DHT network — their pubkey is burned into the DNA at install time via `modifiers.properties`, making admin authority immutable and cryptographically verifiable.
 
-### Reading Properties at Runtime
-
-```rust
-// Method 1: dna_info() + manual deserialization
-let props: DnaProperties = dna_info()?
-    .modifiers.properties
-    .try_into()
-    .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{e}"))))?;
-
-// Method 2: #[dna_properties] macro (official docs)
-#[dna_properties]
-struct DnaProperties {
-    progenitor_pubkey: String,
-}
-let props = DnaProperties::try_from_dna_properties()?;
-```
-
-### Reading Network Info
+Reading network info from DNA properties:
 
 ```rust
 let info = dna_info()?;
 let network_seed = info.modifiers.network_seed.to_string();
-let dna_hash = info.hash.to_string();
+let dna_hash = info.hash;
 ```
 
-### Setting Properties in `dna.yaml`
+For the full progenitor implementation — `DnaProperties` struct, `check_if_progenitor()`, coordinator guard, optional integrity enforcement, bootstrap auto-registration, deploy-time injection (dna.yaml / Sweettest / Kangaroo / Moss), and pitfalls — see **`Progenitor.md`**.
 
-```yaml
-integrity:
-  properties:
-    progenitor_pubkey: "uhCAkXXX..."
-```
-
-### Progenitor Pattern — Gate Admin Operations
-
-One specific agent (the "progenitor") is hardcoded in DNA properties at deploy time. Admin-only zome functions check against this pubkey:
-
-```rust
-pub fn check_if_progenitor() -> ExternResult<bool> {
-    let progenitor = DnaProperties::get_progenitor_pubkey()?;
-    Ok(progenitor == agent_info()?.agent_initial_pubkey)
-}
-
-// In coordinator — guard admin function:
-if !check_if_progenitor()? {
-    return Err(wasm_error!(WasmErrorInner::Guest("Admin-only operation".into())));
-}
-```
-
-**Cross-ref:** See `AccessControl.md` for capability grants and `init()` patterns.
+**Cross-ref:** `AccessControl.md` for capability grants and delegated admin patterns.
 
 ---
 

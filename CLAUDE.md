@@ -16,7 +16,8 @@ A vanilla agent skill for Holochain hApp development. It is a documentation-only
 
 ```
 SKILL.md              Entry point — routing table, context file index, quick reference
-Architecture.md       Coordinator/integrity split, DNA structure, Cargo workspace, Nix, progenitor, multi-DNA, private entries
+Architecture.md       Coordinator/integrity split, DNA structure, Cargo workspace, Nix, dna_info, network_seed, private entries, multi-DNA
+Progenitor.md         DnaProperties struct, check_if_progenitor, coordinator guard, integrity enforcement (Moss), bootstrap auto-registration, deploy-time injection
 Patterns.md           Entry types, link types, CRUD patterns, update chain, validation, signals, HDK 0.6 API
 Scaffold.md           Holonix setup, Nix flake, hc CLI commands, project scaffolding
 AccessControl.md      Capability grants, cap claims, admin-only patterns, init() setup

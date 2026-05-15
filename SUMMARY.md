@@ -11,6 +11,7 @@
 # Core Concepts
 
 - [Architecture](Architecture.md)
+- [Progenitor Pattern](Progenitor.md)
 - [Patterns](Patterns.md)
 - [Access Control](AccessControl.md)
 - [Cell Cloning](CellCloning.md)

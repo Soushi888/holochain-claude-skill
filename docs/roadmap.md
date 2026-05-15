@@ -12,6 +12,10 @@
 - `ImplementZome` — Full CRUD zome implementation
 - `DesignAccessControl` — Capability grants and admin patterns
 - `PackageAndDeploy` — Kangaroo-Electron packaging and CI/CD
+- `ReviewZome` — Proactive code review checklist
+
+**Context files shipped ahead of schedule:**
+- `WindTunnel.md` — Performance/load testing with wind-tunnel (originally v2)
 
 **Target:** All Agent Skills-compatible tools (Claude Code, GitHub Copilot, Cursor, Augment, Codex)
 
@@ -29,9 +33,6 @@
 - **ADAM (coasys)** — AD4M perspectives, expression languages, cross-hApp linking
 - **Holo Hosting** — HTTP gateway setup, edge node configuration, Holo Node ISO, HolOS
 - **Unyt** — Holochain Foundation's P2P accounting and payment infrastructure; Alliance setup and configuration, Smart Agreements (RHAI scripting, three-layer template/agreement/RAVE architecture), transaction types (Pay, Request, Trade), inter-network and EVM bridging, agent onboarding via Joining Service REST API, Pricing Oracle integration, and deployment with `tauri-plugin-holochain`
-
-### New context files
-- `WindTunnel.md` — Performance testing with Wind Tunnel
 
 ### Architecture improvements
 - Skill graph: parent orchestrator routing to sub-skills
@@ -71,3 +72,5 @@ Once both the PAI version and vanilla version are field-tested:
 |---------|------|---------|
 | 0.1.0 | 2026-03-12 | Initial vanilla skill — 6 domains, 5 workflows, requirements spec |
 | 0.1.1 | 2026-03-12 | Agent Skills Open Standard conformance, multi-platform README, testing plan |
+| 0.1.2 | 2026-05-15 | Version bump to Holochain 0.6.1 (hdk=0.6.1, hdi=0.7.1); WindTunnel.md shipped ahead of schedule |
+| 0.2.0 | 2026-05-15 | Expanded progenitor pattern: full DnaProperties setup, bootstrap mode (Option<AgentPubKey>), integrity validation enforcement, is_progenitor hdk_extern, init() bootstrap, deploy-time injection via Kangaroo roles_settings; based on Requests & Offers implementation |
