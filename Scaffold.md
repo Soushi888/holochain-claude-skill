@@ -24,20 +24,33 @@ experimental-features = nix-command flakes
 
 ## Standard flake.nix (Holonix)
 
-Pin to `main-0.6` for HDK 0.6.x stability:
+Pin to `main-0.6` for HDK 0.6.x stability. The full template below matches what `hc scaffold happ` generates — it includes `bun`, `nodejs_22`, and `binaryen` which are needed for the JS test suite and WASM optimisation:
 
 ```nix
 {
+  description = "Flake for Holochain app development";
+
   inputs = {
     holonix.url = "github:holochain/holonix?ref=main-0.6";
     nixpkgs.follows = "holonix/nixpkgs";
     flake-parts.follows = "holonix/flake-parts";
   };
 
-  outputs = inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+  outputs = inputs@{ flake-parts, ... }: flake-parts.lib.mkFlake { inherit inputs; } {
     systems = builtins.attrNames inputs.holonix.devShells;
-    perSystem = { inputs', ... }: {
-      devShells.default = inputs'.holonix.devShells.default;
+    perSystem = { inputs', pkgs, ... }: {
+      formatter = pkgs.nixpkgs-fmt;
+      devShells.default = pkgs.mkShell {
+        inputsFrom = [ inputs'.holonix.devShells.default ];
+        packages = (with pkgs; [
+          nodejs_22
+          binaryen
+          bun
+        ]);
+        shellHook = ''
+          export PS1='\[\033[1;34m\][holonix:\w]\$\[\033[0m\] '
+        '';
+      };
     };
   };
 }
@@ -46,7 +59,7 @@ Pin to `main-0.6` for HDK 0.6.x stability:
 Enter the dev shell:
 ```bash
 nix develop
-# Now hc, cargo, rustc, and all Holochain tooling are available
+# hc, cargo, rustc, bun, and all Holochain tooling are now available
 ```
 
 **Why pin the branch?** Holonix `main` tracks the latest dev version. `main-0.6` pins all tooling to HDK 0.6.x compatibility. Mixing versions causes compilation failures.
@@ -90,7 +103,7 @@ hc scaffold zome
 # Add an entry type to an existing zome pair
 hc scaffold entry-type MyEntry
 # Generates: entry struct in integrity, create/get/update/delete stubs in coordinator
-# Also generates basic Tryorama test file
+# Also generates a basic Tryorama test file (deprecated — write Sweettest tests in your tests crate instead)
 ```
 
 ### Link Type
@@ -129,63 +142,86 @@ bun run build
 
 ## Project Structure After Scaffolding
 
+This is the exact tree `hc scaffold happ` + `hc scaffold entry-type` produces:
+
 ```
 my-happ/
-├── flake.nix                     # Nix dev environment (Holonix)
-├── Cargo.toml                    # Workspace root — pins hdk/hdi versions
-├── happ.yaml                     # hApp manifest (roles, DNAs)
-├── workdir/                      # Build output directory
-└── dnas/
-    └── my_dna/
-        ├── dna.yaml              # DNA manifest (zomes, properties)
-        └── zomes/
-            ├── integrity/
-            │   └── my_domain_integrity/
-            │       ├── Cargo.toml
-            │       └── src/
-            │           ├── lib.rs        # Entry types, link types, validate()
-            │           └── types.rs      # Entry structs
-            └── coordinator/
-                └── my_domain/
-                    ├── Cargo.toml
-                    └── src/
-                        ├── lib.rs        # pub extern declarations
-                        └── my_entry.rs   # CRUD implementation
-```
-
-**Tests live outside dnas:**
-```
-tests/
-├── package.json                  # @holochain/tryorama, vitest
-├── vitest.config.ts              # testTimeout: 60000
-├── foundation/                   # Single-agent happy-path CRUD
-│   └── my_entry.test.ts
-└── integration/                  # Two-agent cross-propagation tests
-    └── my_entry.test.ts
+├── flake.nix                     # Nix dev environment (Holonix + bun + nodejs)
+├── Cargo.toml                    # Workspace root — glob members, exact version pins
+├── Cargo.lock
+├── package.json                  # Root workspace: build:zomes, build:happ, test scripts
+├── .gitignore
+├── workdir/
+│   └── happ.yaml                 # hApp manifest (roles, DNA paths)
+├── dnas/
+│   └── my_dna/
+│       ├── workdir/
+│       │   └── dna.yaml          # DNA manifest (zome WASM paths)
+│       └── zomes/
+│           ├── integrity/
+│           │   └── my_zome_integrity/
+│           │       ├── Cargo.toml
+│           │       └── src/
+│           │           ├── lib.rs        # EntryTypes enum, LinkTypes enum, validate()
+│           │           └── my_entry.rs   # Entry struct + per-op validation fns
+│           └── coordinator/
+│               └── my_zome/
+│                   ├── Cargo.toml
+│                   └── src/
+│                       ├── lib.rs        # init(), Signal enum, post_commit, signal_action
+│                       └── my_entry.rs   # create/get/update/delete + revision history
+├── tests/                        # Tryorama scaffold (deprecated — use Sweettest)
+│   ├── package.json
+│   ├── vitest.config.ts
+│   ├── tsconfig.json
+│   └── src/my_dna/my_zome/
+│       ├── common.ts
+│       └── my_entry.test.ts
+└── ui/                           # UI scaffold (svelte/vue/react depending on template)
 ```
 
 ---
 
 ## Cargo Workspace Version Pins
 
-Root `Cargo.toml` — always use exact pins (`=`):
+Root `Cargo.toml` — `hc scaffold happ` generates glob members so new zome crates are picked up automatically. Always use exact version pins (`=`):
 
 ```toml
+[profile.dev]
+opt-level = "z"
+
+[profile.release]
+opt-level = "z"
+
 [workspace]
+members = ["dnas/*/zomes/coordinator/*", "dnas/*/zomes/integrity/*"]
 resolver = "2"
-members = [
-    "dnas/my_dna/zomes/integrity/my_domain_integrity",
-    "dnas/my_dna/zomes/coordinator/my_domain",
-]
 
 [workspace.dependencies]
 hdi = "=0.7.1"
 hdk = "=0.6.1"
-serde = { version = "1", features = ["derive"] }
-thiserror = "1"
+holochain_serialized_bytes = "*"
+serde = "1.0"
+
+# Per-crate workspace deps (one pair per zome):
+[workspace.dependencies.my_zome]
+path = "dnas/my_dna/zomes/coordinator/my_zome"
+
+[workspace.dependencies.my_zome_integrity]
+path = "dnas/my_dna/zomes/integrity/my_zome_integrity"
 ```
 
 **Why exact pins (`=`)?** Holochain zome compilation is extremely sensitive to minor version differences. Range deps (`^`) can silently pull in incompatible patch releases.
+
+**Sweettest test crate** is NOT picked up by the glob — add it explicitly:
+```toml
+[workspace]
+members = [
+    "dnas/*/zomes/coordinator/*",
+    "dnas/*/zomes/integrity/*",
+    "dnas/my_dna/tests",   # ← explicit
+]
+```
 
 ---
 

@@ -2,6 +2,8 @@
 
 Use this workflow to set up a new Holochain project from scratch, or to add a new domain to an existing hApp.
 
+**Architecture guarantee:** both paths below (CLI and manual) produce the same standard hc scaffold project structure. When `hc scaffold` CLI is available use Path A. When not available (e.g., AI coding session without a running Nix shell), use `Workflows/ManualScaffold.md` — it writes every file explicitly to produce an identical result.
+
 **Reference:** `../Scaffold.md` for full details on any step.
 
 ---
@@ -24,23 +26,40 @@ Restart your shell after installation. Verify: `nix --version`
 
 ---
 
-### Step 2 — Create the flake.nix
+### Step 2 — Bootstrap a Nix Shell
 
-In your new project directory:
+To run `hc scaffold`, you need a Nix dev shell first. Create a bootstrap `flake.nix` in any temporary directory:
+
+```bash
+mkdir bootstrap-holonix && cd bootstrap-holonix
+```
 
 ```nix
-# flake.nix
+# flake.nix — bootstrap only; hc scaffold happ will generate the real one
 {
+  description = "Flake for Holochain app development";
+
   inputs = {
     holonix.url = "github:holochain/holonix?ref=main-0.6";
     nixpkgs.follows = "holonix/nixpkgs";
     flake-parts.follows = "holonix/flake-parts";
   };
 
-  outputs = inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+  outputs = inputs@{ flake-parts, ... }: flake-parts.lib.mkFlake { inherit inputs; } {
     systems = builtins.attrNames inputs.holonix.devShells;
-    perSystem = { inputs', ... }: {
-      devShells.default = inputs'.holonix.devShells.default;
+    perSystem = { inputs', pkgs, ... }: {
+      formatter = pkgs.nixpkgs-fmt;
+      devShells.default = pkgs.mkShell {
+        inputsFrom = [ inputs'.holonix.devShells.default ];
+        packages = (with pkgs; [
+          nodejs_22
+          binaryen
+          bun
+        ]);
+        shellHook = ''
+          export PS1='\[\033[1;34m\][holonix:\w]\$\[\033[0m\] '
+        '';
+      };
     };
   };
 }
@@ -53,12 +72,14 @@ nix develop
 
 **Checkpoint:** `hc --version` returns a version number inside `nix develop`.
 
+> **No CLI available?** If `hc scaffold` is not accessible (e.g., in an AI coding session), use `Workflows/ManualScaffold.md` instead — it provides complete file templates for every generated file.
+
 ---
 
 ### Step 3 — Scaffold the hApp
 
 ```bash
-# Inside nix develop:
+# From the parent directory (not inside the bootstrap dir), inside nix develop:
 hc scaffold happ
 ```
 
@@ -66,10 +87,16 @@ The CLI will prompt for:
 - **App name** — e.g., `my-community-app` (kebab-case)
 - **DNA name** — e.g., `community` (the first domain)
 - **Coordinator zome name** — e.g., `posts` (first feature)
+- **UI framework** — select `svelte` (or your preferred framework)
 
-This generates the complete project structure.
+`hc scaffold happ` creates the full project directory with all root files: `flake.nix`, `Cargo.toml`, `happ.yaml` (inside `workdir/`), `package.json`, `.gitignore`, `dnas/`, `tests/`, and a `ui/` scaffold.
 
-**Checkpoint:** `ls` shows `happ.yaml`, `Cargo.toml`, `flake.nix`, and `dnas/` directory.
+```bash
+cd <your-app-name>
+nix develop  # enter the project's own dev shell
+```
+
+**Checkpoint:** `ls` shows `Cargo.toml`, `flake.nix`, `package.json`, `workdir/`, and `dnas/` directory.
 
 ---
 
@@ -92,13 +119,13 @@ If the scaffold generated range versions (`^`), replace them with exact pins (`=
 
 ### Step 5 — Add Entry Types
 
-For each data type in your domain:
+For each data type in your domain, replace `MyEntry` with your actual domain noun (e.g., `Profile`, `Post`, `Listing`):
 
 ```bash
 # Inside nix develop, from project root
 hc scaffold entry-type MyEntry
 
-# Then add required link types
+# Then add required link types (rename to match your entry type)
 hc scaffold link-type AgentToMyEntry
 hc scaffold link-type PathToMyEntry
 hc scaffold link-type MyEntryUpdates
@@ -122,39 +149,46 @@ hc s sandbox generate workdir/
 
 ### Step 7 — Set Up Tests
 
-Create the test directory structure:
+**Sweettest (Rust) is the primary testing layer** — it runs in-process, is faster, and has first-class HDK 0.6 support. See `Testing.md` for full two-agent patterns.
+
+Add a test crate to your Cargo workspace:
 
 ```bash
-mkdir -p tests/{foundation,integration}
-
-# Initialize package.json
-cd tests
-bun init  # or npm init
-
-# Install test dependencies
-bun add -d @holochain/tryorama vitest
+mkdir -p dnas/<dna_name>/tests/src
 ```
 
-Create `tests/vitest.config.ts`:
-```typescript
-import { defineConfig } from "vitest/config";
-export default defineConfig({
-  test: { testTimeout: 60000, hookTimeout: 60000 },
-});
+`dnas/<dna_name>/tests/Cargo.toml`:
+```toml
+[package]
+name = "<dna_name>_tests"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+holochain = { version = "=0.6.1", features = ["test_utils"] }
+tokio     = { version = "1", features = ["full"] }
 ```
 
-Add test scripts to `tests/package.json`:
-```json
-{
-  "scripts": {
-    "test": "vitest run",
-    "test:foundation": "vitest run foundation",
-    "test:integration": "vitest run integration"
-  }
-}
+The workspace `members` glob (`"dnas/*/zomes/coordinator/*"` etc.) does not pick up the test crate — add it explicitly:
+```toml
+[workspace]
+members = [
+    "dnas/*/zomes/coordinator/*",
+    "dnas/*/zomes/integrity/*",
+    "dnas/<dna_name>/tests",
+]
 ```
 
-**Checkpoint:** `bun run test` runs without errors (may have no tests yet — that's fine).
+Run with:
+```bash
+cargo test --package <dna_name>_tests
+```
+
+**Checkpoint:** `cargo test --package <dna_name>_tests` compiles (no tests yet is fine).
+
+---
+
+> **Tryorama (TypeScript) — deprecated.** `hc scaffold happ` generates a TypeScript/Tryorama test suite under `tests/` (with `@holochain/tryorama` and vitest). These files ship with the scaffold output but Tryorama is not the recommended path for new test work. Use Sweettest instead. If you need to run the generated Tryorama tests: `cd tests && bun install && cd .. && bun run test`.
 
 ---
 
@@ -162,6 +196,16 @@ Add test scripts to `tests/package.json`:
 
 ```bash
 git init
+
+# Create .gitignore to exclude build artifacts
+cat > .gitignore << 'EOF'
+/target
+/workdir
+/.cargo
+node_modules
+dist
+EOF
+
 git add .
 git commit -m "feat: scaffold initial happ structure"
 ```
