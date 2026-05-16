@@ -131,7 +131,7 @@ Enter dev shell: `nix develop`
 
 ### happ.yaml
 ```yaml
-manifest_version: "1"
+manifest_version: "0"
 name: my_happ
 description: "My hApp"
 roles:
@@ -148,7 +148,7 @@ roles:
 
 ### dna.yaml
 ```yaml
-manifest_version: "1"
+manifest_version: "0"
 name: my_dna
 integrity:
   network_seed: ~
@@ -254,7 +254,7 @@ let response = call(
 ### `happ.yaml` Multi-Role Structure
 
 ```yaml
-manifest_version: "1"
+manifest_version: "0"
 name: my_happ
 roles:
   - name: primary_role
