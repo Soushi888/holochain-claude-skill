@@ -183,9 +183,19 @@ pub fn update_my_entry(input: UpdateMyEntryInput) -> ExternResult<Record> {
 }
 
 // DELETE
+// Decision point: clean up BOTH index links (path + agent) for a full remove,
+// or only the path link and leave the agent link as a historical tombstone.
+// Most apps clean both. Only keep the agent link if you need "all entries ever
+// created by this agent including deleted ones" semantics.
 #[hdk_extern]
 pub fn delete_my_entry(original_action_hash: ActionHash) -> ExternResult<ActionHash> {
-    // Clean path links
+    let original = get(original_action_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Entry not found".into())))?;
+    if original.action().author() != &agent_info()?.agent_initial_pubkey {
+        return Err(wasm_error!(WasmErrorInner::Guest("Not authorized".into())));
+    }
+
+    // Clean path index (global browse)
     let path = Path::from("entries.active");
     for link in get_links(
         GetLinksInputBuilder::try_new(path.path_entry_hash()?, LinkTypes::PathToMyEntry)?.build(),
@@ -194,6 +204,20 @@ pub fn delete_my_entry(original_action_hash: ActionHash) -> ExternResult<ActionH
             delete_link(link.create_link_hash)?;
         }
     }
+
+    // Clean agent index (per-author listing) — omit if you want historical tombstones
+    for link in get_links(
+        GetLinksInputBuilder::try_new(
+            agent_info()?.agent_initial_pubkey,
+            LinkTypes::AgentToMyEntry,
+        )?
+        .build(),
+    )? {
+        if link.target.into_action_hash() == Some(original_action_hash.clone()) {
+            delete_link(link.create_link_hash)?;
+        }
+    }
+
     delete_entry(original_action_hash)
 }
 
@@ -206,15 +230,41 @@ pub struct UpdateMyEntryInput {
 }
 ```
 
-**lib.rs — register all functions:**
+**lib.rs — register all functions (complete example):**
 ```rust
 pub mod my_entry;
-use my_entry::*;
+
+use hdk::prelude::*;
+use {domain}_integrity::*;
+use my_entry::UpdateMyEntryInput;
 
 #[hdk_extern]
-pub fn create_my_entry(entry: MyEntry) -> ExternResult<Record> { my_entry::create_my_entry(entry) }
-// ... repeat for all pub functions
+pub fn create_my_entry(entry: MyEntry) -> ExternResult<Record> {
+    my_entry::create_my_entry(entry)
+}
+
+#[hdk_extern]
+pub fn get_latest_my_entry(original_action_hash: ActionHash) -> ExternResult<Option<Record>> {
+    my_entry::get_latest_my_entry(original_action_hash)
+}
+
+#[hdk_extern]
+pub fn get_all_my_entries(_: ()) -> ExternResult<Vec<Record>> {
+    my_entry::get_all_my_entries(())
+}
+
+#[hdk_extern]
+pub fn update_my_entry(input: UpdateMyEntryInput) -> ExternResult<Record> {
+    my_entry::update_my_entry(input)
+}
+
+#[hdk_extern]
+pub fn delete_my_entry(original_action_hash: ActionHash) -> ExternResult<ActionHash> {
+    my_entry::delete_my_entry(original_action_hash)
+}
 ```
+
+Note: each function in `my_entry.rs` already has `#[hdk_extern]`, so the `lib.rs` wrappers are thin delegators. This is the standard pattern the scaffold generates.
 
 ---
 
