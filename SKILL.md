@@ -3,7 +3,7 @@ name: holochain
 description: >
   Holochain hApp development assistant covering coordinator/integrity zome
   architecture, Rust HDK/HDI patterns, entry/link types, CRUD, validation,
-  cross-zome calls, Tryorama testing, TypeScript client integration, and
+  cross-zome calls, Sweettest testing, TypeScript client integration, and
   Nix dev environments. USE WHEN writing zome code, designing DHT data models,
   scaffolding a new project, testing hApps, debugging HDK issues, implementing
   entry types or links, cap grants, access control, cell cloning, deploying
@@ -44,6 +44,7 @@ When proactively invoked: load `Architecture.md` + `Patterns.md`, run the **Revi
 | **ReviewZome** | review zome, audit zome, check implementation, validate patterns, before implementing, PR review, code review on zome | `Workflows/ReviewZome.md` |
 | **DesignDataModel** | design data model, model entries, what entries, what links, DHT schema | `Workflows/DesignDataModel.md` |
 | **Scaffold** | scaffold, new happ, new project, setup environment, init project, Holonix, nix develop, hc scaffold | `Workflows/Scaffold.md` |
+| **ManualScaffold** | create project files, scaffold without CLI, manual scaffold, AI creates files, no hc scaffold, scaffold in session | `Workflows/ManualScaffold.md` |
 | **ImplementZome** | implement zome, create zome, scaffold zome, write zome | `Workflows/ImplementZome.md` |
 | **DesignAccessControl** | design access control, who can call, cap grant design | `Workflows/DesignAccessControl.md` |
 | **PackageAndDeploy** | deploy, package, distribute, kangaroo, installer, desktop app, webhapp | `Workflows/PackageAndDeploy.md` |
@@ -117,10 +118,10 @@ User: "I need to model a Listing entry with status transitions"
 
 **Example 2: Debug a cross-agent test that fails intermittently**
 ```
-User: "My Tryorama test passes alone but fails when another agent reads the entry"
+User: "My Sweettest passes alone but fails when another agent reads the entry"
 → Loads Testing.md
-→ Identifies missing dhtSync call before cross-agent read
-→ Adds dhtSync([alice, bob], t) after Alice's create, before Bob's get
+→ Identifies missing await_consistency call before cross-agent read
+→ Adds await_consistency_60s([&alice, &bob]).await after Alice's create, before Bob's get
 → Test passes reliably
 ```
 
@@ -128,7 +129,9 @@ User: "My Tryorama test passes alone but fails when another agent reads the entr
 ```
 User: "Start a new Holochain project for a community coordination app"
 → Loads Scaffold.md + Workflows/Scaffold.md
-→ Guides: nix flake setup → hc scaffold happ → first DNA → first zome pair
+→ If hc scaffold CLI is available: guides nix flake setup → hc scaffold happ → entry types
+→ If no CLI (AI coding session): invokes Workflows/ManualScaffold.md → writes identical structure
+→ Both paths produce the same standard hc scaffold architecture
 → Verifies compilation with hc s sandbox generate workdir/
 ```
 
@@ -139,5 +142,5 @@ User: "Implement a full resource zome with create, read, update, delete"
 → Invokes Workflows/ImplementZome.md
 → Creates integrity crate (entry struct, link enum, validation)
 → Creates coordinator crate (create/read/update/delete functions)
-→ Writes Tryorama tests at foundation + integration layers
+→ Writes Sweettest tests at foundation + integration layers
 ```

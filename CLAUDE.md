@@ -23,7 +23,7 @@ Scaffold.md           Holonix setup, Nix flake, hc CLI commands, project scaffol
 AccessControl.md      Capability grants, cap claims, admin-only patterns, init() setup
 CellCloning.md        Clone cells, partitioned data, createCloneCell, clone_limit
 ErrorHandling.md      thiserror enums, WasmError, ExternResult patterns
-Testing.md            Tryorama + Vitest setup, two-agent scenarios, dhtSync, test organization
+Testing.md            Sweettest (Rust-native) setup, two-agent scenarios, await_consistency, inline zomes, test organization (Tryorama deprecated)
 WindTunnel.md         Performance/load testing with wind-tunnel framework
 TypeScript.md         holochain-client setup, callZome, signals, SvelteKit integration
 Deployment.md         Kangaroo-Electron packaging, .webhapp bundling, CI/CD, versioning

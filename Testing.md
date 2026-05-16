@@ -35,7 +35,7 @@
 - **Playwright** + **`@holochain/client`** — Browser automation against a real conductor. No mocks.
 - **Wind-Tunnel** (`holochain_wind_tunnel_runner`) — Rust load testing. Separate repo. Measures latency, throughput, DHT sync lag. Used for Holochain core CI performance regression. See `WindTunnel.md`.
 
-**Note on Tryorama:** Deprecated for HDK 0.7+ by the Holochain team. Use Sweettest for integration tests and Playwright for E2E UI tests.
+**Note on Tryorama:** Deprecated for HDK 0.7+ by the Holochain team. This skill targets HDK 0.6.1, where Tryorama technically still works, but Sweettest is the recommended path even on 0.6.x — the API is cleaner and forward-compatible. Use Sweettest for all new integration tests.
 
 ---
 
@@ -204,18 +204,6 @@ async fn validate_entry_on_create() {
     assert!(result.is_err());
 }
 ```
-
-### Common Sweettest Failures
-
-| Symptom | Root Cause | Fix |
-|---------|-----------|-----|
-| Bob can't find Alice's entry | Missing `await_consistency` | Add `await_consistency(&[&alice_cell, &bob_cell]).await.unwrap()` |
-| Compilation error on `call()` | Missing feature flag | Add `features = ["test_utils"]` to holochain dev-dep |
-| Timeout in `await_consistency` | Conductors not networked | Call `conductors.exchange_peer_info().await` after `setup_app` |
-| Wrong type on `call()` | Type annotation missing | Add explicit type: `let result: MyType = conductor.call(...)` |
-| `into_tuple()` fails | Wrong number of cells destructured | Match tuple arity to number of DNA roles |
-
----
 
 ### SweetConductorConfig — Network Tuning
 

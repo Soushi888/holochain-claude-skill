@@ -12,7 +12,7 @@ A comprehensive [Agent Skills Open Standard](https://agentskills.io) skill for H
 | **Design** | DHT data modeling, entry/link type design, discovery strategy, validation rules |
 | **Scaffold** | Holonix setup, Nix flake, `hc` CLI, `hc scaffold` commands, new project and new domain workflows |
 | **Implement** | Entry types, link types, CRUD patterns, cross-zome calls, signals, validation, HDK 0.6 API |
-| **Test** | Tryorama + Vitest setup, two-agent scenarios, `dhtSync`, update/delete patterns, test organization |
+| **Test** | Sweettest two-agent scenarios, `await_consistency`, update/delete patterns, inline zomes, test organization (Tryorama deprecated) |
 | **Deploy** | Kangaroo-Electron packaging, `.webhapp` bundling, CI/CD, versioning semantics, auto-update |
 
 **Current version pins:** `hdk = "=0.6.1"` | `hdi = "=0.7.1"` | `holonix ref=main-0.6`
@@ -90,7 +90,7 @@ The tool discovers the skill automatically on next launch. For global install pa
 /holochain implement zome for Profile entry type
 
 # Debug a flaky test
-/holochain my Tryorama test passes alone but fails when Bob reads Alice's entry
+/holochain my Sweettest passes alone but fails when Bob reads Alice's entry
 
 # Package for distribution
 /holochain deploy package my happ for desktop distribution
@@ -138,7 +138,7 @@ Scaffold.md           Dev environment and project scaffolding
 AccessControl.md      Capability grants system
 CellCloning.md        Partitioned data via clone cells
 ErrorHandling.md      thiserror + WasmError patterns
-Testing.md            Tryorama + Vitest patterns
+Testing.md            Sweettest patterns (Tryorama deprecated)
 TypeScript.md         holochain-client, signals, Svelte integration
 Deployment.md         Kangaroo-Electron packaging and distribution
 Workflows/            Step-by-step guided workflows
